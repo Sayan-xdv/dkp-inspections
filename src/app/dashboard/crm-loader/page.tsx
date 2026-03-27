@@ -32,6 +32,7 @@ export default function CrmLoaderPage() {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [counts, setCounts] = useState({ completed: 0, uploaded_to_crm: 0 });
+  const [crmSearch, setCrmSearch] = useState('');
 
   const supabase = createClient();
 
@@ -173,9 +174,13 @@ export default function CrmLoaderPage() {
     setSelected(next);
   };
 
+  const filteredApartments = crmSearch.trim()
+    ? apartments.filter(a => a.crm_code?.toLowerCase().includes(crmSearch.trim().toLowerCase()))
+    : apartments;
+
   const toggleAll = () => {
-    if (selected.size === apartments.length) setSelected(new Set());
-    else setSelected(new Set(apartments.map(a => a.id)));
+    if (selected.size === filteredApartments.length) setSelected(new Set());
+    else setSelected(new Set(filteredApartments.map(a => a.id)));
   };
 
   const uniqueProjects = [...new Set(projects.map(p => p.name))].sort();
@@ -202,7 +207,11 @@ export default function CrmLoaderPage() {
       {/* Filters */}
       <Card className="mb-4">
         <CardContent className="pt-4">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">Код CRM</label>
+              <Input placeholder="Поиск по коду CRM" value={crmSearch} onChange={e => setCrmSearch(e.target.value)} />
+            </div>
             <div>
               <label className="text-xs text-gray-500 mb-1 block">Дата от</label>
               <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
@@ -253,11 +262,12 @@ export default function CrmLoaderPage() {
                   {tab === 'completed' && (
                     <TableHead className="w-10">
                       <Checkbox
-                        checked={selected.size === apartments.length && apartments.length > 0}
+                        checked={selected.size === filteredApartments.length && filteredApartments.length > 0}
                         onCheckedChange={toggleAll}
                       />
                     </TableHead>
                   )}
+                  <TableHead>Код CRM</TableHead>
                   <TableHead>Дата</TableHead>
                   <TableHead>Проект</TableHead>
                   <TableHead>Адрес</TableHead>
@@ -270,25 +280,26 @@ export default function CrmLoaderPage() {
                 {loading ? (
                   Array.from({ length: 5 }).map((_, i) => (
                     <TableRow key={i}>
-                      {Array.from({ length: tab === 'completed' ? 7 : 6 }).map((_, j) => (
+                      {Array.from({ length: tab === 'completed' ? 8 : 7 }).map((_, j) => (
                         <TableCell key={j}><div className="h-4 bg-gray-100 rounded animate-pulse" /></TableCell>
                       ))}
                     </TableRow>
                   ))
-                ) : apartments.length === 0 ? (
+                ) : filteredApartments.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={tab === 'completed' ? 7 : 6} className="text-center py-8 text-gray-500">
+                    <TableCell colSpan={tab === 'completed' ? 8 : 7} className="text-center py-8 text-gray-500">
                       Нет данных
                     </TableCell>
                   </TableRow>
                 ) : (
-                  apartments.map(apt => (
+                  filteredApartments.map(apt => (
                     <TableRow key={apt.id}>
                       {tab === 'completed' && (
                         <TableCell>
                           <Checkbox checked={selected.has(apt.id)} onCheckedChange={() => toggleSelect(apt.id)} />
                         </TableCell>
                       )}
+                      <TableCell className="whitespace-nowrap text-xs text-gray-500">{apt.crm_code}</TableCell>
                       <TableCell className="whitespace-nowrap">
                         {apt.completed_at ? new Date(apt.completed_at).toLocaleDateString('ru') : '—'}
                       </TableCell>

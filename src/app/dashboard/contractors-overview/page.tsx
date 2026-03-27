@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -29,6 +30,7 @@ export default function ContractorsOverviewPage() {
   const [apartments, setApartments] = useState<Apartment[]>([]);
   const [selectedContractor, setSelectedContractor] = useState('all');
   const [loading, setLoading] = useState(true);
+  const [crmSearch, setCrmSearch] = useState('');
 
   const supabase = createClient();
 
@@ -102,6 +104,10 @@ export default function ContractorsOverviewPage() {
     if (days === 1) return 'Завтра';
     return `${days} дн.`;
   }
+
+  const filteredApartments = crmSearch.trim()
+    ? apartments.filter(a => a.crm_code?.toLowerCase().includes(crmSearch.trim().toLowerCase()))
+    : apartments;
 
   const totalAssigned = contractors.reduce((s, c) => s + c.assigned, 0);
   const totalInProgress = contractors.reduce((s, c) => s + c.in_progress, 0);
@@ -196,8 +202,15 @@ export default function ContractorsOverviewPage() {
       {/* Detail: active assignments */}
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-3">
             <CardTitle className="text-base">Активные задания</CardTitle>
+            <div className="flex items-center gap-3">
+              <Input
+                placeholder="Поиск по коду CRM"
+                value={crmSearch}
+                onChange={e => setCrmSearch(e.target.value)}
+                className="w-[200px]"
+              />
             <Select value={selectedContractor} onValueChange={(v) => setSelectedContractor(v ?? 'all')}>
               <SelectTrigger className="w-[200px]">
                 <SelectValue />
@@ -209,6 +222,7 @@ export default function ContractorsOverviewPage() {
                 ))}
               </SelectContent>
             </Select>
+            </div>
           </div>
         </CardHeader>
         <CardContent className="p-0">
@@ -216,6 +230,7 @@ export default function ContractorsOverviewPage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead>Код CRM</TableHead>
                   <TableHead>Проект</TableHead>
                   <TableHead>Адрес</TableHead>
                   <TableHead>Кв.</TableHead>
@@ -225,15 +240,16 @@ export default function ContractorsOverviewPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {apartments.length === 0 ? (
+                {filteredApartments.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8 text-gray-500">
+                    <TableCell colSpan={7} className="text-center py-8 text-gray-500">
                       Нет активных заданий
                     </TableCell>
                   </TableRow>
                 ) : (
-                  apartments.map(apt => (
+                  filteredApartments.map(apt => (
                     <TableRow key={apt.id}>
+                      <TableCell className="whitespace-nowrap text-xs text-gray-500">{apt.crm_code}</TableCell>
                       <TableCell className="font-medium">{apt.project_name}</TableCell>
                       <TableCell className="text-sm max-w-48 truncate">{apt.address}</TableCell>
                       <TableCell>{apt.apartment_number}</TableCell>

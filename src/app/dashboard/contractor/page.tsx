@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useProfile } from '@/hooks/use-profile';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -31,6 +32,7 @@ export default function ContractorPage() {
   const [selectedReason, setSelectedReason] = useState('');
   const [rejectionNote, setRejectionNote] = useState('');
   const [uploading, setUploading] = useState<string | null>(null);
+  const [crmSearch, setCrmSearch] = useState('');
 
   const supabase = createClient();
 
@@ -168,7 +170,9 @@ export default function ContractorPage() {
     </div>;
   }
 
-  const filteredApts = apartments.filter(a => a.status === tab);
+  const filteredApts = apartments.filter(a => a.status === tab).filter(a =>
+    !crmSearch.trim() || a.crm_code?.toLowerCase().includes(crmSearch.trim().toLowerCase())
+  );
   const assignedCount = apartments.filter(a => a.status === 'assigned').length;
   const inProgressCount = apartments.filter(a => a.status === 'in_progress').length;
 
@@ -208,6 +212,16 @@ export default function ContractorPage() {
         </Button>
       </div>
 
+      {/* CRM search */}
+      <div className="mb-4">
+        <Input
+          placeholder="Поиск по коду CRM"
+          value={crmSearch}
+          onChange={e => setCrmSearch(e.target.value)}
+          className="max-w-xs"
+        />
+      </div>
+
       {/* Cards */}
       {loading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -234,6 +248,7 @@ export default function ContractorPage() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-2 text-sm text-gray-600 mb-4">
+                  <p className="text-xs text-gray-400">Код CRM: {apt.crm_code}</p>
                   <p>{apt.address}</p>
                   <div className="flex gap-4">
                     <span>Дом: <strong>{apt.building_number}</strong></span>

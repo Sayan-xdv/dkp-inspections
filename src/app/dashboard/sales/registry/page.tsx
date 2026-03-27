@@ -34,6 +34,7 @@ export default function RegistryPage() {
   const [projectFilter, setProjectFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [contractorFilter, setContractorFilter] = useState('all');
+  const [crmSearch, setCrmSearch] = useState('');
 
   const supabase = createClient();
 
@@ -63,12 +64,13 @@ export default function RegistryPage() {
     if (projectFilter !== 'all') query = query.eq('project_name', projectFilter);
     if (statusFilter !== 'all') query = query.eq('status', statusFilter);
     if (contractorFilter !== 'all') query = query.eq('contractor_id', contractorFilter);
+    if (crmSearch.trim()) query = query.ilike('crm_code', `%${crmSearch.trim()}%`);
 
     const { data, count } = await query;
     setApartments(data ?? []);
     setTotal(count ?? 0);
     setLoading(false);
-  }, [page, dateFrom, dateTo, projectFilter, statusFilter, contractorFilter]);
+  }, [page, dateFrom, dateTo, projectFilter, statusFilter, contractorFilter, crmSearch]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -110,7 +112,11 @@ export default function RegistryPage() {
       {/* Filters */}
       <Card className="mb-6">
         <CardContent className="pt-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">Код CRM</label>
+              <Input placeholder="Поиск по коду CRM" value={crmSearch} onChange={e => { setCrmSearch(e.target.value); setPage(0); }} />
+            </div>
             <div>
               <label className="text-xs text-gray-500 mb-1 block">Дата от</label>
               <Input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setPage(0); }} />
@@ -166,6 +172,7 @@ export default function RegistryPage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead>Код CRM</TableHead>
                   <TableHead>Дата</TableHead>
                   <TableHead>Проект</TableHead>
                   <TableHead>Адрес</TableHead>
@@ -181,7 +188,7 @@ export default function RegistryPage() {
                 {loading ? (
                   Array.from({ length: 10 }).map((_, i) => (
                     <TableRow key={i}>
-                      {Array.from({ length: 9 }).map((_, j) => (
+                      {Array.from({ length: 10 }).map((_, j) => (
                         <TableCell key={j}>
                           <div className="h-4 bg-gray-100 rounded animate-pulse" />
                         </TableCell>
@@ -190,13 +197,14 @@ export default function RegistryPage() {
                   ))
                 ) : apartments.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center py-8 text-gray-500">
+                    <TableCell colSpan={10} className="text-center py-8 text-gray-500">
                       Нет данных
                     </TableCell>
                   </TableRow>
                 ) : (
                   apartments.map((apt) => (
                     <TableRow key={apt.id}>
+                      <TableCell className="whitespace-nowrap text-xs text-gray-500">{apt.crm_code}</TableCell>
                       <TableCell className="whitespace-nowrap">{apt.receipt_date}</TableCell>
                       <TableCell className="font-medium">{apt.project_name}</TableCell>
                       <TableCell className="text-sm max-w-48 truncate">{apt.address}</TableCell>

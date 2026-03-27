@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -29,6 +30,7 @@ export default function SettlementPage() {
   const [reasons, setReasons] = useState<RejectionReason[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [counts, setCounts] = useState({ pending_keys: 0, rejected: 0, keys_unavailable: 0 });
+  const [crmSearch, setCrmSearch] = useState('');
 
   // Rejection dialog
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
@@ -147,9 +149,13 @@ export default function SettlementPage() {
     setSelected(next);
   };
 
+  const filteredApartments = crmSearch.trim()
+    ? apartments.filter(a => a.crm_code?.toLowerCase().includes(crmSearch.trim().toLowerCase()))
+    : apartments;
+
   const toggleAll = () => {
-    if (selected.size === apartments.length) setSelected(new Set());
-    else setSelected(new Set(apartments.map(a => a.id)));
+    if (selected.size === filteredApartments.length) setSelected(new Set());
+    else setSelected(new Set(filteredApartments.map(a => a.id)));
   };
 
   return (
@@ -175,6 +181,16 @@ export default function SettlementPage() {
         ))}
       </div>
 
+      {/* CRM search */}
+      <div className="mb-4">
+        <Input
+          placeholder="Поиск по коду CRM"
+          value={crmSearch}
+          onChange={e => setCrmSearch(e.target.value)}
+          className="max-w-xs"
+        />
+      </div>
+
       {/* Bulk action */}
       {selected.size > 0 && tab === 'pending_keys' && (
         <Card className="mb-4 border-green-200 bg-green-50">
@@ -197,11 +213,12 @@ export default function SettlementPage() {
                   {tab === 'pending_keys' && (
                     <TableHead className="w-10">
                       <Checkbox
-                        checked={selected.size === apartments.length && apartments.length > 0}
+                        checked={selected.size === filteredApartments.length && filteredApartments.length > 0}
                         onCheckedChange={toggleAll}
                       />
                     </TableHead>
                   )}
+                  <TableHead>Код CRM</TableHead>
                   <TableHead>Проект</TableHead>
                   <TableHead>Адрес</TableHead>
                   <TableHead>Дом</TableHead>
@@ -215,19 +232,19 @@ export default function SettlementPage() {
                 {loading ? (
                   Array.from({ length: 5 }).map((_, i) => (
                     <TableRow key={i}>
-                      {Array.from({ length: tab === 'pending_keys' ? 8 : 7 }).map((_, j) => (
+                      {Array.from({ length: tab === 'pending_keys' ? 9 : 8 }).map((_, j) => (
                         <TableCell key={j}><div className="h-4 bg-gray-100 rounded animate-pulse" /></TableCell>
                       ))}
                     </TableRow>
                   ))
-                ) : apartments.length === 0 ? (
+                ) : filteredApartments.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={tab === 'pending_keys' ? 8 : 7} className="text-center py-8 text-gray-500">
+                    <TableCell colSpan={tab === 'pending_keys' ? 9 : 8} className="text-center py-8 text-gray-500">
                       Нет квартир в этой категории
                     </TableCell>
                   </TableRow>
                 ) : (
-                  apartments.map((apt) => (
+                  filteredApartments.map((apt) => (
                     <TableRow key={apt.id}>
                       {tab === 'pending_keys' && (
                         <TableCell>
@@ -237,6 +254,7 @@ export default function SettlementPage() {
                           />
                         </TableCell>
                       )}
+                      <TableCell className="whitespace-nowrap text-xs text-gray-500">{apt.crm_code}</TableCell>
                       <TableCell className="font-medium">{apt.project_name}</TableCell>
                       <TableCell className="text-sm max-w-48 truncate">{apt.address}</TableCell>
                       <TableCell>{apt.building_number}</TableCell>

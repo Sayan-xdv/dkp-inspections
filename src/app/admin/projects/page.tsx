@@ -191,7 +191,9 @@ export default function ProjectsPage() {
                         }
                       >
                         <SelectTrigger className="w-[250px]">
-                          <SelectValue placeholder="Не назначен" />
+                          <span>
+                            {contractors.find(c => c.id === project.contractor_id)?.name ?? 'Не назначен'}
+                          </span>
                         </SelectTrigger>
                         <SelectContent>
                           {contractors.map((c) => (
