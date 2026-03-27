@@ -87,22 +87,15 @@ export default function ContractorsOverviewPage() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  function getDeadlineColor(deadline: string | null): string {
-    if (!deadline) return 'text-gray-400';
-    const days = Math.ceil((new Date(deadline).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-    if (days < 0) return 'text-red-600 font-bold';
-    if (days <= 2) return 'text-red-500';
-    if (days <= 5) return 'text-yellow-600';
-    return 'text-green-600';
+  function getWaitingDays(receiptDate: string | null): number {
+    if (!receiptDate) return 0;
+    return Math.floor((Date.now() - new Date(receiptDate).getTime()) / (1000 * 60 * 60 * 24));
   }
 
-  function getDeadlineText(deadline: string | null): string {
-    if (!deadline) return '—';
-    const days = Math.ceil((new Date(deadline).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-    if (days < 0) return `${Math.abs(days)} дн. просрочено`;
-    if (days === 0) return 'Сегодня';
-    if (days === 1) return 'Завтра';
-    return `${days} дн.`;
+  function getWaitingColor(receiptDate: string | null): string {
+    const days = getWaitingDays(receiptDate);
+    if (days > 10) return 'text-red-600 font-bold';
+    return 'text-gray-600';
   }
 
   const filteredApartments = crmSearch.trim()
@@ -236,7 +229,7 @@ export default function ContractorsOverviewPage() {
                   <TableHead>Кв.</TableHead>
                   <TableHead>Подрядчик</TableHead>
                   <TableHead>Статус</TableHead>
-                  <TableHead>Срок</TableHead>
+                  <TableHead>Ожидание</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -257,10 +250,8 @@ export default function ContractorsOverviewPage() {
                         {contractors.find(c => c.id === apt.contractor_id)?.name ?? '—'}
                       </TableCell>
                       <TableCell><StatusBadge status={apt.status} /></TableCell>
-                      <TableCell className={getDeadlineColor(apt.deadline)}>
-                        {apt.deadline ? new Date(apt.deadline).toLocaleDateString('ru') : '—'}
-                        <br />
-                        <span className="text-xs">{getDeadlineText(apt.deadline)}</span>
+                      <TableCell className={getWaitingColor(apt.receipt_date)}>
+                        {getWaitingDays(apt.receipt_date)} дн.
                       </TableCell>
                     </TableRow>
                   ))

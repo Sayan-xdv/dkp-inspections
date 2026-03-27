@@ -74,6 +74,17 @@ export default function RegistryPage() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
+  function getWaitingDays(receiptDate: string | null): number {
+    if (!receiptDate) return 0;
+    return Math.floor((Date.now() - new Date(receiptDate).getTime()) / (1000 * 60 * 60 * 24));
+  }
+
+  function getWaitingColor(receiptDate: string | null): string {
+    const days = getWaitingDays(receiptDate);
+    if (days > 10) return 'text-red-600 font-bold';
+    return 'text-gray-600';
+  }
+
   const exportExcel = () => {
     const ws = XLSX.utils.json_to_sheet(
       apartments.map(a => ({
@@ -182,13 +193,14 @@ export default function RegistryPage() {
                   <TableHead>Отделка</TableHead>
                   <TableHead>Статус</TableHead>
                   <TableHead>Подрядчик</TableHead>
+                  <TableHead>Ожидание</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {loading ? (
-                  Array.from({ length: 10 }).map((_, i) => (
+                  Array.from({ length: 11 }).map((_, i) => (
                     <TableRow key={i}>
-                      {Array.from({ length: 10 }).map((_, j) => (
+                      {Array.from({ length: 11 }).map((_, j) => (
                         <TableCell key={j}>
                           <div className="h-4 bg-gray-100 rounded animate-pulse" />
                         </TableCell>
@@ -197,7 +209,7 @@ export default function RegistryPage() {
                   ))
                 ) : apartments.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={10} className="text-center py-8 text-gray-500">
+                    <TableCell colSpan={11} className="text-center py-8 text-gray-500">
                       Нет данных
                     </TableCell>
                   </TableRow>
@@ -214,6 +226,9 @@ export default function RegistryPage() {
                       <TableCell>{apt.finish_type}</TableCell>
                       <TableCell><StatusBadge status={apt.status} /></TableCell>
                       <TableCell>{(apt.contractor as unknown as { name: string })?.name ?? '—'}</TableCell>
+                      <TableCell className={getWaitingColor(apt.receipt_date)}>
+                        {getWaitingDays(apt.receipt_date)} дн.
+                      </TableCell>
                     </TableRow>
                   ))
                 )}
