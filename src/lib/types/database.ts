@@ -125,5 +125,18 @@ export const ROLE_CONFIG: Record<AppRole, { label: string; defaultPath: string }
   settlement: { label: 'Офис заселения', defaultPath: '/dashboard/settlement' },
   contractor: { label: 'Подрядчик', defaultPath: '/dashboard/contractor' },
   crm_loader: { label: 'Загрузчик CRM', defaultPath: '/dashboard/crm-loader' },
-  admin: { label: 'Администратор', defaultPath: '/dashboard/sales' },
+  admin: { label: 'Администратор', defaultPath: '/dashboard/overview' },
 };
+
+// Notification (рассылка подрядчикам)
+export interface Notification {
+  id: string;
+  type: 'overdue_reminder' | 'custom';
+  recipient_contractor_id: string | null;
+  apartment_ids: string[];
+  subject: string;
+  body: string;
+  sent_by: string | null;
+  sent_at: string;
+  contractor?: Contractor;
+}

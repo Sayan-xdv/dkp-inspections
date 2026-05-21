@@ -1,9 +1,19 @@
 import type { Metadata } from 'next';
-import { Inter } from 'next/font/google';
+import { Inter_Tight, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
 import { Toaster } from '@/components/ui/sonner';
 
-const inter = Inter({ subsets: ['latin', 'cyrillic'] });
+const interTight = Inter_Tight({
+  subsets: ['latin', 'cyrillic'],
+  variable: '--font-display',
+  display: 'swap',
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ['latin', 'cyrillic'],
+  variable: '--font-mono',
+  display: 'swap',
+});
 
 export const metadata: Metadata = {
   title: 'Экспертизы ДКП',
@@ -16,10 +26,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="ru" className="h-full">
-      <body className={`${inter.className} min-h-full`}>
+    <html lang="ru" className={`h-full ${interTight.variable} ${jetbrainsMono.variable}`}>
+      <body className="min-h-full font-sans antialiased">
         {children}
-        <Toaster />
+        <Toaster richColors closeButton />
       </body>
     </html>
   );

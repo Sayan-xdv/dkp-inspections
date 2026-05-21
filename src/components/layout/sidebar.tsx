@@ -15,6 +15,7 @@ import {
   Building2,
   AlertCircle,
   BarChart3,
+  LayoutDashboard,
   LogOut,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -43,6 +44,7 @@ const NAV_ITEMS: Record<AppRole, NavItem[]> = {
     { href: '/dashboard/crm-loader', label: 'Готовые экспертизы', icon: <Download size={18} /> },
   ],
   admin: [
+    { href: '/dashboard/overview', label: 'Аналитика', icon: <LayoutDashboard size={18} /> },
     { href: '/dashboard/sales', label: 'Дашборд', icon: <BarChart3 size={18} /> },
     { href: '/dashboard/sales/upload', label: 'Загрузка Excel', icon: <Upload size={18} /> },
     { href: '/dashboard/sales/registry', label: 'Реестр', icon: <ClipboardList size={18} /> },
