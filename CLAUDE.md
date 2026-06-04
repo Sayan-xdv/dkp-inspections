@@ -1,5 +1,34 @@
 @AGENTS.md
 
+## Текущее состояние (2026-06-04)
+
+**Прод-домен:** https://dkp-inspections.vercel.app
+
+**Демо-юзеры (пароль у всех `Demo2026!`):**
+
+| Роль | Логин | Куда попадает |
+|---|---|---|
+| Admin | `admin@dkp.samolet.ru` | `/dashboard/overview` (wow-аналитика) |
+| Settlement (ключник) | `keys@dkp.samolet.ru` | `/dashboard/settlement` |
+| Contractor Аксиома | `aksioma@dkp.samolet.ru` | `/dashboard/contractor` |
+| Contractor Войс | `voice@dkp.samolet.ru` | `/dashboard/contractor` |
+| Contractor РБО | `rbo@dkp.samolet.ru` | `/dashboard/contractor` |
+| Contractor Мещеряков | `meshcheryakov@dkp.samolet.ru` | `/dashboard/contractor` |
+
+Под админом доступны все разделы — sales и crm_loader отдельных юзеров пока нет.
+
+**Демо-данные:** 300 квартир по всем 8 статусам, 793 записи `status_history`, 8 уведомлений за 7 дней, 3 import-батча. Распределение по подрядчикам: Аксиома 60, Войс 40, РБО 60, Мещеряков 80.
+
+**⚠️ Известные нюансы:**
+1. **Supabase free-tier** периодически уходит в `INACTIVE` и **стирает все таблицы**. При следующей такой ситуации — `restore_project` поднимет проект, но данные надо пересеять (см. историю чата 2026-06-04 или скрипты в `supabase/migrations/`). Рассмотреть апгрейд до Pro tier.
+2. **RLS-политики** на проде переписаны на SECURITY DEFINER функции (`current_user_is_admin()`, `current_user_has_role()`, `current_user_contractor_id()`) — исходные политики в `001_create_schema.sql` имели infinite recursion. При пересборке схемы фикс надо применять заново или обновить файл миграции.
+3. **Vercel-GitHub auto-deploy** работает: push в `main` → автодеплой в production через webhook.
+
+**Скрипты:**
+- `screenshots-demo/take_all.py` — авто-скриншоты всех страниц через Playwright (нужен пароль из таблицы выше).
+
+
+
 <!-- VERCEL BEST PRACTICES START -->
 ## Best practices for developing on Vercel
 
