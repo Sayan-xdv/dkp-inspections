@@ -16,6 +16,6 @@ export default async function DashboardPage() {
 
   if (!profile) redirect('/login');
 
-  const defaultPath = ROLE_CONFIG[profile.role as keyof typeof ROLE_CONFIG]?.defaultPath ?? '/dashboard/sales';
+  const defaultPath = ROLE_CONFIG[profile.role as keyof typeof ROLE_CONFIG]?.defaultPath ?? '/dashboard/sales/registry';
   redirect(defaultPath);
 }

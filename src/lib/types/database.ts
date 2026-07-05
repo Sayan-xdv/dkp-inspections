@@ -121,7 +121,7 @@ export const STATUS_CONFIG: Record<ApartmentStatus, { label: string; color: stri
 
 // Role display info
 export const ROLE_CONFIG: Record<AppRole, { label: string; defaultPath: string }> = {
-  sales: { label: 'Продажи', defaultPath: '/dashboard/sales' },
+  sales: { label: 'Продажи', defaultPath: '/dashboard/sales/registry' },
   settlement: { label: 'Офис заселения', defaultPath: '/dashboard/settlement' },
   contractor: { label: 'Подрядчик', defaultPath: '/dashboard/contractor' },
   crm_loader: { label: 'Загрузчик CRM', defaultPath: '/dashboard/crm-loader' },

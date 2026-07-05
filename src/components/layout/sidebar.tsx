@@ -13,7 +13,6 @@ import {
   Users,
   Building2,
   AlertCircle,
-  BarChart3,
   LayoutDashboard,
   FileUp,
   LogOut,
@@ -29,9 +28,8 @@ interface NavItem {
 
 const NAV_ITEMS: Record<AppRole, NavItem[]> = {
   sales: [
-    { href: '/dashboard/sales', label: 'Дашборд', icon: <BarChart3 size={18} /> },
-    { href: '/dashboard/sales/upload', label: 'Загрузка Excel', icon: <Upload size={18} /> },
     { href: '/dashboard/sales/registry', label: 'Реестр', icon: <ClipboardList size={18} /> },
+    { href: '/dashboard/sales/upload', label: 'Загрузка Excel', icon: <Upload size={18} /> },
   ],
   settlement: [
     { href: '/dashboard/settlement', label: 'Очередь ключей', icon: <Key size={18} /> },
@@ -44,7 +42,6 @@ const NAV_ITEMS: Record<AppRole, NavItem[]> = {
   ],
   admin: [
     { href: '/dashboard/overview', label: 'Аналитика', icon: <LayoutDashboard size={18} /> },
-    { href: '/dashboard/sales', label: 'Дашборд', icon: <BarChart3 size={18} /> },
     { href: '/dashboard/sales/upload', label: 'Загрузка Excel', icon: <Upload size={18} /> },
     { href: '/dashboard/sales/registry', label: 'Реестр', icon: <ClipboardList size={18} /> },
     { href: '/dashboard/settlement', label: 'Очередь ключей', icon: <Key size={18} /> },
