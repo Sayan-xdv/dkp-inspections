@@ -42,25 +42,25 @@ export default function ContractorPage() {
     }
     setLoading(true);
 
-    const { data } = await supabase
-      .from('apartments')
-      .select('*')
-      .eq('contractor_id', contractorId)
-      .in('status', ['assigned', 'in_progress'])
-      .order('deadline', { ascending: true, nullsFirst: false });
+    // Параллельно: список заданий + счётчик «готово сегодня»
+    const today = new Date().toISOString().split('T')[0];
+    const [{ data }, { count }] = await Promise.all([
+      supabase
+        .from('apartments')
+        .select('*')
+        .eq('contractor_id', contractorId)
+        .in('status', ['assigned', 'in_progress'])
+        .order('deadline', { ascending: true, nullsFirst: false }),
+      supabase
+        .from('apartments')
+        .select('*', { count: 'exact', head: true })
+        .eq('contractor_id', contractorId)
+        .eq('status', 'completed')
+        .gte('completed_at', today),
+    ]);
 
     setApartments(data ?? []);
-
-    // Count completed today
-    const today = new Date().toISOString().split('T')[0];
-    const { count } = await supabase
-      .from('apartments')
-      .select('*', { count: 'exact', head: true })
-      .eq('contractor_id', contractorId)
-      .eq('status', 'completed')
-      .gte('completed_at', today);
     setCompletedToday(count ?? 0);
-
     setLoading(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contractorId]);
