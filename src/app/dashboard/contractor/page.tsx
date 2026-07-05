@@ -14,6 +14,7 @@ import { RejectDialog } from '@/components/apartments/reject-dialog';
 import { CrmSearch, filterByCrmCode } from '@/components/apartments/crm-search';
 import { getWaitingDays, getWaitingColor } from '@/lib/workflow/waiting';
 import { sanitizeStorageKey } from '@/lib/utils';
+import { allowedSourceStatuses } from '@/lib/workflow/state-machine';
 import { Upload, AlertTriangle, CheckCircle2, HardHat, Clock, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Apartment } from '@/lib/types/database';
@@ -100,7 +101,8 @@ export default function ContractorPage() {
           report_uploaded_at: new Date().toISOString(),
           completed_at: new Date().toISOString(),
         })
-        .eq('id', aptId);
+        .eq('id', aptId)
+        .in('status', allowedSourceStatuses('completed', 'contractor'));
 
       if (updateError) {
         toast.error('Ошибка обновления: ' + updateError.message);
@@ -122,7 +124,8 @@ export default function ContractorPage() {
         rejection_reason_id: reasonId,
         rejection_note: note || null,
       })
-      .eq('id', rejectingAptId);
+      .eq('id', rejectingAptId)
+      .in('status', allowedSourceStatuses('rejected', 'contractor'));
 
     if (error) {
       toast.error('Ошибка: ' + error.message);

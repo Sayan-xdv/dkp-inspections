@@ -15,6 +15,7 @@ import { RejectDialog } from '@/components/apartments/reject-dialog';
 import { CrmSearch, filterByCrmCode } from '@/components/apartments/crm-search';
 import { Key, Check, X, RotateCcw, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
+import { allowedSourceStatuses } from '@/lib/workflow/state-machine';
 import type { Apartment } from '@/lib/types/database';
 
 type TabKey = 'pending_keys' | 'rejected' | 'keys_unavailable';
@@ -62,7 +63,8 @@ export default function SettlementPage() {
         keys_available: true,
         keys_confirmed_at: new Date().toISOString(),
       })
-      .eq('id', aptId);
+      .eq('id', aptId)
+      .in('status', allowedSourceStatuses('keys_available', 'settlement'));
 
     if (error) {
       toast.error('Ошибка: ' + error.message);
@@ -81,7 +83,8 @@ export default function SettlementPage() {
         keys_available: true,
         keys_confirmed_at: new Date().toISOString(),
       })
-      .in('id', Array.from(selected));
+      .in('id', Array.from(selected))
+      .in('status', allowedSourceStatuses('keys_available', 'settlement'));
 
     if (error) {
       toast.error('Ошибка: ' + error.message);
@@ -101,7 +104,8 @@ export default function SettlementPage() {
         rejection_reason_id: reasonId,
         rejection_note: note || null,
       })
-      .eq('id', rejectingAptId);
+      .eq('id', rejectingAptId)
+      .in('status', allowedSourceStatuses('keys_unavailable', 'settlement'));
 
     if (error) {
       toast.error('Ошибка: ' + error.message);
@@ -115,7 +119,8 @@ export default function SettlementPage() {
     const { error } = await supabase
       .from('apartments')
       .update({ status: 'pending_keys', rejection_note: null, rejection_reason_id: null })
-      .eq('id', aptId);
+      .eq('id', aptId)
+      .in('status', allowedSourceStatuses('pending_keys', 'settlement'));
 
     if (error) toast.error('Ошибка: ' + error.message);
     else { toast.success('Возвращено в очередь'); loadData(); }

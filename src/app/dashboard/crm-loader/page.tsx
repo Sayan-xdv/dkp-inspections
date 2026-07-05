@@ -20,6 +20,7 @@ import { Download, FileDown, CheckCircle2, Loader2, FileSpreadsheet } from 'luci
 import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
 import JSZip from 'jszip';
+import { allowedSourceStatuses } from '@/lib/workflow/state-machine';
 import type { Apartment, Project } from '@/lib/types/database';
 
 type TabKey = 'completed' | 'uploaded_to_crm';
@@ -145,7 +146,8 @@ export default function CrmLoaderPage() {
         status: 'uploaded_to_crm',
         uploaded_to_crm_at: new Date().toISOString(),
       })
-      .eq('id', aptId);
+      .eq('id', aptId)
+      .in('status', allowedSourceStatuses('uploaded_to_crm', 'crm_loader'));
 
     if (error) toast.error('Ошибка: ' + error.message);
     else { toast.success('Отмечено как загруженное'); loadData(); }
@@ -159,7 +161,8 @@ export default function CrmLoaderPage() {
         status: 'uploaded_to_crm',
         uploaded_to_crm_at: new Date().toISOString(),
       })
-      .in('id', Array.from(selected));
+      .in('id', Array.from(selected))
+      .in('status', allowedSourceStatuses('uploaded_to_crm', 'crm_loader'));
 
     if (error) toast.error('Ошибка: ' + error.message);
     else { toast.success(`Отмечено: ${selected.size} квартир`); loadData(); }
