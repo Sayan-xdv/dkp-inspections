@@ -1,35 +1,41 @@
 -- =====================================================
 -- DKP Inspections Database Schema
+-- Идемпотентная версия: повторный прогон не падает.
+-- RLS построена на SECURITY DEFINER функциях — политика,
+-- которая делает EXISTS-подзапрос в свою же таблицу,
+-- даёт infinite recursion (42P17).
 -- =====================================================
 
--- Enum types
-CREATE TYPE app_role AS ENUM ('sales', 'settlement', 'contractor', 'crm_loader', 'admin');
+-- Enum types (переживают wipe free-tier — оборачиваем)
+DO $$ BEGIN
+  CREATE TYPE app_role AS ENUM ('sales', 'settlement', 'contractor', 'crm_loader', 'admin');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
-CREATE TYPE apartment_status AS ENUM (
-  'pending_keys',
-  'keys_unavailable',
-  'keys_available',
-  'assigned',
-  'in_progress',
-  'rejected',
-  'completed',
-  'uploaded_to_crm'
-);
+DO $$ BEGIN
+  CREATE TYPE apartment_status AS ENUM (
+    'pending_keys',
+    'keys_unavailable',
+    'keys_available',
+    'assigned',
+    'in_progress',
+    'rejected',
+    'completed',
+    'uploaded_to_crm'
+  );
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 -- =====================================================
 -- Tables
 -- =====================================================
 
--- Contractors (4 companies)
-CREATE TABLE contractors (
+CREATE TABLE IF NOT EXISTS contractors (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL UNIQUE,
   is_active BOOLEAN NOT NULL DEFAULT true,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Projects (residential developments)
-CREATE TABLE projects (
+CREATE TABLE IF NOT EXISTS projects (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL UNIQUE,
   contractor_id UUID NOT NULL REFERENCES contractors(id),
@@ -37,16 +43,14 @@ CREATE TABLE projects (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Rejection reasons
-CREATE TABLE rejection_reasons (
+CREATE TABLE IF NOT EXISTS rejection_reasons (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   label TEXT NOT NULL UNIQUE,
   is_active BOOLEAN NOT NULL DEFAULT true,
   sort_order INT NOT NULL DEFAULT 0
 );
 
--- User profiles (extends Supabase auth.users)
-CREATE TABLE profiles (
+CREATE TABLE IF NOT EXISTS profiles (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   email TEXT NOT NULL,
   full_name TEXT NOT NULL DEFAULT '',
@@ -57,8 +61,7 @@ CREATE TABLE profiles (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Import batches
-CREATE TABLE import_batches (
+CREATE TABLE IF NOT EXISTS import_batches (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   uploaded_by UUID NOT NULL REFERENCES profiles(id),
   filename TEXT NOT NULL,
@@ -70,8 +73,7 @@ CREATE TABLE import_batches (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Apartments (main entity)
-CREATE TABLE apartments (
+CREATE TABLE IF NOT EXISTS apartments (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
   -- CRM data
@@ -122,8 +124,7 @@ CREATE TABLE apartments (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Status history (audit trail)
-CREATE TABLE status_history (
+CREATE TABLE IF NOT EXISTS status_history (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   apartment_id UUID NOT NULL REFERENCES apartments(id) ON DELETE CASCADE,
   old_status apartment_status,
@@ -137,20 +138,43 @@ CREATE TABLE status_history (
 -- Indexes
 -- =====================================================
 
-CREATE INDEX idx_apartments_status ON apartments(status);
-CREATE INDEX idx_apartments_contractor ON apartments(contractor_id);
-CREATE INDEX idx_apartments_project ON apartments(project_id);
-CREATE INDEX idx_apartments_crm_code ON apartments(crm_code);
-CREATE INDEX idx_apartments_receipt_date ON apartments(receipt_date);
-CREATE INDEX idx_apartments_project_name ON apartments(project_name);
-CREATE INDEX idx_status_history_apartment ON status_history(apartment_id);
-CREATE INDEX idx_profiles_role ON profiles(role);
+CREATE INDEX IF NOT EXISTS idx_apartments_status ON apartments(status);
+CREATE INDEX IF NOT EXISTS idx_apartments_contractor ON apartments(contractor_id);
+CREATE INDEX IF NOT EXISTS idx_apartments_project ON apartments(project_id);
+CREATE INDEX IF NOT EXISTS idx_apartments_crm_code ON apartments(crm_code);
+CREATE INDEX IF NOT EXISTS idx_apartments_receipt_date ON apartments(receipt_date);
+CREATE INDEX IF NOT EXISTS idx_apartments_project_name ON apartments(project_name);
+CREATE INDEX IF NOT EXISTS idx_status_history_apartment ON status_history(apartment_id);
+CREATE INDEX IF NOT EXISTS idx_profiles_role ON profiles(role);
 
 -- =====================================================
--- Functions & Triggers
+-- RLS helper functions (SECURITY DEFINER — обходят RLS
+-- внутри себя, разрывая рекурсию политик)
 -- =====================================================
 
--- Auto-assign contractor when keys are confirmed
+CREATE OR REPLACE FUNCTION public.current_user_is_admin() RETURNS BOOLEAN
+LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public AS $$
+  SELECT EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
+$$;
+
+CREATE OR REPLACE FUNCTION public.current_user_has_role(roles app_role[]) RETURNS BOOLEAN
+LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public AS $$
+  SELECT EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = ANY(roles))
+$$;
+
+CREATE OR REPLACE FUNCTION public.current_user_contractor_id() RETURNS UUID
+LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public AS $$
+  SELECT contractor_id FROM profiles WHERE id = auth.uid()
+$$;
+
+GRANT EXECUTE ON FUNCTION public.current_user_is_admin() TO authenticated, anon;
+GRANT EXECUTE ON FUNCTION public.current_user_has_role(app_role[]) TO authenticated, anon;
+GRANT EXECUTE ON FUNCTION public.current_user_contractor_id() TO authenticated, anon;
+
+-- =====================================================
+-- Functions & Triggers (workflow)
+-- =====================================================
+
 CREATE OR REPLACE FUNCTION fn_auto_assign_contractor()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -170,12 +194,12 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS trigger_auto_assign_contractor ON apartments;
 CREATE TRIGGER trigger_auto_assign_contractor
   BEFORE UPDATE ON apartments
   FOR EACH ROW
   EXECUTE FUNCTION fn_auto_assign_contractor();
 
--- Track status changes
 CREATE OR REPLACE FUNCTION fn_track_status_change()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -188,21 +212,23 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS trigger_track_status ON apartments;
 CREATE TRIGGER trigger_track_status
   BEFORE UPDATE ON apartments
   FOR EACH ROW
   EXECUTE FUNCTION fn_track_status_change();
 
--- Auto-create profile on user signup
 CREATE OR REPLACE FUNCTION fn_handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
   INSERT INTO profiles (id, email, full_name)
-  VALUES (NEW.id, NEW.email, COALESCE(NEW.raw_user_meta_data->>'full_name', ''));
+  VALUES (NEW.id, NEW.email, COALESCE(NEW.raw_user_meta_data->>'full_name', ''))
+  ON CONFLICT (id) DO NOTHING;
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
+DROP TRIGGER IF EXISTS trigger_on_auth_user_created ON auth.users;
 CREATE TRIGGER trigger_on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW
@@ -220,84 +246,109 @@ ALTER TABLE rejection_reasons ENABLE ROW LEVEL SECURITY;
 ALTER TABLE import_batches ENABLE ROW LEVEL SECURITY;
 ALTER TABLE status_history ENABLE ROW LEVEL SECURITY;
 
--- Profiles
-CREATE POLICY "Users can view own profile" ON profiles
-  FOR SELECT USING (auth.uid() = id);
-CREATE POLICY "Admin can manage all profiles" ON profiles
-  FOR ALL USING (
-    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
-  );
+-- Profiles: чтение всем залогиненным (нужно приложению для
+-- отображения имён/ролей), запись — только админ.
+DROP POLICY IF EXISTS "Profiles readable by all auth users" ON profiles;
+CREATE POLICY "Profiles readable by all auth users" ON profiles
+  FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Admin can insert profiles" ON profiles;
+CREATE POLICY "Admin can insert profiles" ON profiles
+  FOR INSERT TO authenticated WITH CHECK (public.current_user_is_admin());
+DROP POLICY IF EXISTS "Admin can update profiles" ON profiles;
+CREATE POLICY "Admin can update profiles" ON profiles
+  FOR UPDATE TO authenticated USING (public.current_user_is_admin());
+DROP POLICY IF EXISTS "Admin can delete profiles" ON profiles;
+CREATE POLICY "Admin can delete profiles" ON profiles
+  FOR DELETE TO authenticated USING (public.current_user_is_admin());
 
--- Contractors: everyone can read
+-- Contractors
+DROP POLICY IF EXISTS "Everyone can read contractors" ON contractors;
 CREATE POLICY "Everyone can read contractors" ON contractors
   FOR SELECT USING (true);
-CREATE POLICY "Admin can manage contractors" ON contractors
-  FOR ALL USING (
-    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
-  );
+DROP POLICY IF EXISTS "Admin can insert contractors" ON contractors;
+CREATE POLICY "Admin can insert contractors" ON contractors
+  FOR INSERT TO authenticated WITH CHECK (public.current_user_is_admin());
+DROP POLICY IF EXISTS "Admin can update contractors" ON contractors;
+CREATE POLICY "Admin can update contractors" ON contractors
+  FOR UPDATE TO authenticated USING (public.current_user_is_admin());
+DROP POLICY IF EXISTS "Admin can delete contractors" ON contractors;
+CREATE POLICY "Admin can delete contractors" ON contractors
+  FOR DELETE TO authenticated USING (public.current_user_is_admin());
 
--- Projects: everyone can read
+-- Projects
+DROP POLICY IF EXISTS "Everyone can read projects" ON projects;
 CREATE POLICY "Everyone can read projects" ON projects
   FOR SELECT USING (true);
-CREATE POLICY "Admin can manage projects" ON projects
-  FOR ALL USING (
-    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
-  );
+DROP POLICY IF EXISTS "Admin can insert projects" ON projects;
+CREATE POLICY "Admin can insert projects" ON projects
+  FOR INSERT TO authenticated WITH CHECK (public.current_user_is_admin());
+DROP POLICY IF EXISTS "Admin can update projects" ON projects;
+CREATE POLICY "Admin can update projects" ON projects
+  FOR UPDATE TO authenticated USING (public.current_user_is_admin());
+DROP POLICY IF EXISTS "Admin can delete projects" ON projects;
+CREATE POLICY "Admin can delete projects" ON projects
+  FOR DELETE TO authenticated USING (public.current_user_is_admin());
 
--- Rejection reasons: everyone can read
+-- Rejection reasons
+DROP POLICY IF EXISTS "Everyone can read rejection reasons" ON rejection_reasons;
 CREATE POLICY "Everyone can read rejection reasons" ON rejection_reasons
   FOR SELECT USING (true);
-CREATE POLICY "Admin can manage rejection reasons" ON rejection_reasons
-  FOR ALL USING (
-    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
-  );
+DROP POLICY IF EXISTS "Admin can insert rejection reasons" ON rejection_reasons;
+CREATE POLICY "Admin can insert rejection reasons" ON rejection_reasons
+  FOR INSERT TO authenticated WITH CHECK (public.current_user_is_admin());
+DROP POLICY IF EXISTS "Admin can update rejection reasons" ON rejection_reasons;
+CREATE POLICY "Admin can update rejection reasons" ON rejection_reasons
+  FOR UPDATE TO authenticated USING (public.current_user_is_admin());
+DROP POLICY IF EXISTS "Admin can delete rejection reasons" ON rejection_reasons;
+CREATE POLICY "Admin can delete rejection reasons" ON rejection_reasons
+  FOR DELETE TO authenticated USING (public.current_user_is_admin());
 
--- Apartments: role-based access
+-- Apartments
+DROP POLICY IF EXISTS "Sales/admin/crm_loader can read all apartments" ON apartments;
 CREATE POLICY "Sales/admin/crm_loader can read all apartments" ON apartments
-  FOR SELECT USING (
-    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('sales', 'admin', 'crm_loader'))
-  );
+  FOR SELECT TO authenticated
+  USING (public.current_user_has_role(ARRAY['sales','admin','crm_loader']::app_role[]));
+DROP POLICY IF EXISTS "Settlement can read all apartments" ON apartments;
 CREATE POLICY "Settlement can read all apartments" ON apartments
-  FOR SELECT USING (
-    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'settlement')
-  );
+  FOR SELECT TO authenticated
+  USING (public.current_user_has_role(ARRAY['settlement']::app_role[]));
+DROP POLICY IF EXISTS "Contractors read own assignments" ON apartments;
 CREATE POLICY "Contractors read own assignments" ON apartments
-  FOR SELECT USING (
-    EXISTS (
-      SELECT 1 FROM profiles p
-      WHERE p.id = auth.uid() AND p.role = 'contractor'
-      AND apartments.contractor_id = p.contractor_id
-    )
+  FOR SELECT TO authenticated
+  USING (
+    public.current_user_has_role(ARRAY['contractor']::app_role[])
+    AND contractor_id = public.current_user_contractor_id()
   );
-CREATE POLICY "Sales can insert apartments" ON apartments
-  FOR INSERT WITH CHECK (
-    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('sales', 'admin'))
-  );
-CREATE POLICY "Settlement can update apartments" ON apartments
-  FOR UPDATE USING (
-    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('settlement', 'admin'))
-  );
+DROP POLICY IF EXISTS "Sales/admin can insert apartments" ON apartments;
+CREATE POLICY "Sales/admin can insert apartments" ON apartments
+  FOR INSERT TO authenticated
+  WITH CHECK (public.current_user_has_role(ARRAY['sales','admin']::app_role[]));
+DROP POLICY IF EXISTS "Settlement/admin can update apartments" ON apartments;
+CREATE POLICY "Settlement/admin can update apartments" ON apartments
+  FOR UPDATE TO authenticated
+  USING (public.current_user_has_role(ARRAY['settlement','admin']::app_role[]));
+DROP POLICY IF EXISTS "Contractors can update own assignments" ON apartments;
 CREATE POLICY "Contractors can update own assignments" ON apartments
-  FOR UPDATE USING (
-    EXISTS (
-      SELECT 1 FROM profiles p
-      WHERE p.id = auth.uid() AND p.role = 'contractor'
-      AND apartments.contractor_id = p.contractor_id
-    )
+  FOR UPDATE TO authenticated
+  USING (
+    public.current_user_has_role(ARRAY['contractor']::app_role[])
+    AND contractor_id = public.current_user_contractor_id()
   );
-CREATE POLICY "CRM loaders can update apartments" ON apartments
-  FOR UPDATE USING (
-    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('crm_loader', 'admin'))
-  );
+DROP POLICY IF EXISTS "CRM loaders/admin can update apartments" ON apartments;
+CREATE POLICY "CRM loaders/admin can update apartments" ON apartments
+  FOR UPDATE TO authenticated
+  USING (public.current_user_has_role(ARRAY['crm_loader','admin']::app_role[]));
 
--- Import batches: sales & admin
-CREATE POLICY "Sales can manage import batches" ON import_batches
-  FOR ALL USING (
-    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('sales', 'admin'))
-  );
+-- Import batches
+DROP POLICY IF EXISTS "Sales/admin can manage import batches" ON import_batches;
+CREATE POLICY "Sales/admin can manage import batches" ON import_batches
+  FOR ALL TO authenticated
+  USING (public.current_user_has_role(ARRAY['sales','admin']::app_role[]));
 
--- Status history: everyone can read
+-- Status history
+DROP POLICY IF EXISTS "Everyone can read status history" ON status_history;
 CREATE POLICY "Everyone can read status history" ON status_history
   FOR SELECT USING (true);
+DROP POLICY IF EXISTS "System can insert status history" ON status_history;
 CREATE POLICY "System can insert status history" ON status_history
   FOR INSERT WITH CHECK (true);
