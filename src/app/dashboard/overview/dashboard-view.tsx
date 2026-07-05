@@ -77,7 +77,7 @@ export function OverviewDashboardView({
   }
 
   return (
-    <div className="relative -mx-4 -my-4 sm:-mx-6 sm:-my-6 px-4 py-6 sm:px-6 sm:py-8 dashboard-grid-bg min-h-[calc(100vh-2rem)]">
+    <div className="relative">
       {/* ===== Hero ===== */}
       <div className="flex flex-col gap-4 mb-6 lg:flex-row lg:items-end lg:justify-between">
         <div className="space-y-2 stagger-in" style={{ animationDelay: '0ms' }}>

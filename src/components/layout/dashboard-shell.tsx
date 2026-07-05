@@ -16,11 +16,11 @@ export function DashboardShell({
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
-    <div className="flex min-h-screen bg-gray-50">
+    <div className="flex min-h-screen bg-gray-50/80">
       {/* Mobile sidebar overlay */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 z-40 bg-black/30 lg:hidden"
+          className="fixed inset-0 z-40 bg-black/30 backdrop-blur-[2px] lg:hidden"
           onClick={() => setSidebarOpen(false)}
         />
       )}
@@ -37,7 +37,7 @@ export function DashboardShell({
       {/* Main content */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Mobile header */}
-        <div className="lg:hidden flex items-center gap-3 p-4 border-b bg-white">
+        <div className="lg:hidden flex items-center gap-3 p-4 border-b border-gray-200/80 bg-white">
           <Button
             variant="ghost"
             size="icon"
@@ -45,10 +45,12 @@ export function DashboardShell({
           >
             {sidebarOpen ? <X size={20} /> : <Menu size={20} />}
           </Button>
-          <h1 className="text-lg font-bold">Экспертизы ДКП</h1>
+          <h1 className="font-display text-lg font-semibold tracking-tight">Экспертизы ДКП</h1>
         </div>
 
-        <main className="flex-1 p-4 lg:p-6">{children}</main>
+        <main className="flex-1 dashboard-grid-bg">
+          <div className="mx-auto w-full max-w-[1400px] p-4 sm:p-6 lg:p-8">{children}</div>
+        </main>
       </div>
     </div>
   );
