@@ -4,10 +4,9 @@ import { useEffect, useState, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import type { Project, Contractor } from '@/lib/types/database';
 import { toast } from 'sonner';
-import { Plus, FolderKanban, Loader2 } from 'lucide-react';
+import { Plus, FolderKanban, Loader2, Building2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -20,7 +19,11 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog';
-import { Skeleton } from '@/components/ui/skeleton';
+import { PageHeader } from '@/components/layout/page-header';
+import { EmptyState } from '@/components/shared/empty-state';
+import { SkeletonTableRows } from '@/components/shared/skeleton-table';
+
+const headCls = 'text-[10px] uppercase tracking-wider text-gray-400 font-medium';
 
 export default function ProjectsPage() {
   const supabase = createClient();
@@ -102,17 +105,17 @@ export default function ProjectsPage() {
   };
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Проекты</h1>
-          <p className="text-muted-foreground">Привязка проектов к подрядчикам</p>
-        </div>
-        <Button onClick={() => { setProjectName(''); setContractorId(''); setDialogOpen(true); }}>
-          <Plus className="h-4 w-4 mr-2" />
-          Добавить проект
-        </Button>
-      </div>
+    <>
+      <PageHeader
+        title="Проекты"
+        subtitle="Распределение ЖК по подрядчикам"
+        actions={
+          <Button onClick={() => { setProjectName(''); setContractorId(''); setDialogOpen(true); }}>
+            <Plus className="h-4 w-4 mr-2" />
+            Добавить проект
+          </Button>
+        }
+      />
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>
             <DialogHeader>
@@ -156,73 +159,75 @@ export default function ProjectsPage() {
         </DialogContent>
       </Dialog>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <FolderKanban className="h-5 w-5" />
-            Список проектов
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="space-y-3">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <Skeleton key={i} className="h-12 w-full" />
-              ))}
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Название</TableHead>
-                  <TableHead>Подрядчик</TableHead>
-                  <TableHead>Статус</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {projects.map((project) => (
-                  <TableRow key={project.id}>
-                    <TableCell className="font-medium">{project.name}</TableCell>
-                    <TableCell>
-                      <Select
-                        value={project.contractor_id}
-                        onValueChange={(value) =>
-                          value && handleContractorChange(project.id, value)
-                        }
-                      >
-                        <SelectTrigger className="w-[250px]">
-                          <span>
-                            {contractors.find(c => c.id === project.contractor_id)?.name ?? 'Не назначен'}
-                          </span>
-                        </SelectTrigger>
-                        <SelectContent>
-                          {contractors.map((c) => (
-                            <SelectItem key={c.id} value={c.id}>
-                              {c.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={project.is_active ? 'default' : 'outline'}>
-                        {project.is_active ? 'Активен' : 'Неактивен'}
-                      </Badge>
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {projects.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={3} className="text-center text-muted-foreground py-8">
-                      Проекты не найдены
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
+      <div
+        className="rounded-2xl bg-white border border-gray-200/80 shadow-[0_1px_2px_rgba(0,0,0,0.04)] overflow-hidden stagger-in"
+        style={{ animationDelay: '80ms' }}
+      >
+        <div className="flex items-center gap-2 px-5 py-4 border-b border-gray-100">
+          <FolderKanban className="h-4 w-4 text-gray-400" />
+          <span className="text-sm font-medium text-gray-900">Список проектов</span>
+          {!loading && (
+            <span className="ml-1 text-xs text-gray-400 font-mono-tabular">{projects.length}</span>
           )}
-        </CardContent>
-      </Card>
-    </div>
+        </div>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className={headCls}>Название</TableHead>
+              <TableHead className={headCls}>Подрядчик</TableHead>
+              <TableHead className={headCls}>Статус</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {loading ? (
+              <SkeletonTableRows rows={5} cols={3} />
+            ) : (
+              projects.map((project) => (
+                <TableRow key={project.id}>
+                  <TableCell className="font-medium">{project.name}</TableCell>
+                  <TableCell>
+                    <Select
+                      value={project.contractor_id}
+                      onValueChange={(value) =>
+                        value && handleContractorChange(project.id, value)
+                      }
+                    >
+                      <SelectTrigger className="w-[250px]">
+                        {contractors.find(c => c.id === project.contractor_id)?.name ? (
+                          <span className="inline-flex items-center bg-indigo-50 text-indigo-700 border border-indigo-200/60 rounded-md px-2 py-0.5 text-xs">
+                            {contractors.find(c => c.id === project.contractor_id)?.name}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-gray-400">Не назначен</span>
+                        )}
+                      </SelectTrigger>
+                      <SelectContent>
+                        {contractors.map((c) => (
+                          <SelectItem key={c.id} value={c.id}>
+                            {c.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={project.is_active ? 'default' : 'outline'}>
+                      {project.is_active ? 'Активен' : 'Неактивен'}
+                    </Badge>
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
+        {!loading && projects.length === 0 && (
+          <EmptyState
+            icon={Building2}
+            title="Проекты не найдены"
+            description="Добавьте проект и привяжите его к подрядчику"
+          />
+        )}
+      </div>
+    </>
   );
 }

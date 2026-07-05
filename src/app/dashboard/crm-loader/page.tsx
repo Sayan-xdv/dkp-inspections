@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -12,7 +11,11 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
-import { StatusBadge } from '@/components/apartments/status-badge';
+import { PageHeader } from '@/components/layout/page-header';
+import { EmptyState } from '@/components/shared/empty-state';
+import { SkeletonTableRows } from '@/components/shared/skeleton-table';
+import { ConfirmDialog } from '@/components/shared/confirm-dialog';
+import { CrmSearch, filterByCrmCode } from '@/components/apartments/crm-search';
 import { Download, FileDown, CheckCircle2, Loader2, FileSpreadsheet } from 'lucide-react';
 import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
@@ -33,6 +36,7 @@ export default function CrmLoaderPage() {
   const [dateTo, setDateTo] = useState('');
   const [counts, setCounts] = useState({ completed: 0, uploaded_to_crm: 0 });
   const [crmSearch, setCrmSearch] = useState('');
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   const supabase = createClient();
 
@@ -100,6 +104,7 @@ export default function CrmLoaderPage() {
 
     setDownloading(true);
     const zip = new JSZip();
+    let added = 0;
 
     for (const apt of selectedApts) {
       const { data } = await supabase.storage
@@ -107,7 +112,14 @@ export default function CrmLoaderPage() {
         .download(apt.report_file_path!);
       if (data) {
         zip.file(`${apt.crm_code.replace(/[/\\]/g, '_')}.pdf`, data);
+        added++;
       }
+    }
+
+    if (added === 0) {
+      setDownloading(false);
+      toast.error('Файлы отчётов не найдены в хранилище');
+      return;
     }
 
     const blob = await zip.generateAsync({ type: 'blob' });
@@ -118,7 +130,12 @@ export default function CrmLoaderPage() {
     a.click();
     URL.revokeObjectURL(url);
     setDownloading(false);
-    toast.success(`Скачано ${selectedApts.length} файлов`);
+
+    if (added < selected.size) {
+      toast.warning(`Скачано ${added} из ${selected.size} файлов — остальные не найдены в хранилище`);
+    } else {
+      toast.success(`Скачано файлов: ${added}`);
+    }
   }
 
   async function markUploaded(aptId: string) {
@@ -174,9 +191,7 @@ export default function CrmLoaderPage() {
     setSelected(next);
   };
 
-  const filteredApartments = crmSearch.trim()
-    ? apartments.filter(a => a.crm_code?.toLowerCase().includes(crmSearch.trim().toLowerCase()))
-    : apartments;
+  const filteredApartments = filterByCrmCode(apartments, crmSearch);
 
   const toggleAll = () => {
     if (selected.size === filteredApartments.length) setSelected(new Set());
@@ -185,150 +200,185 @@ export default function CrmLoaderPage() {
 
   const uniqueProjects = [...new Set(projects.map(p => p.name))].sort();
 
+  const colCount = tab === 'completed' ? 8 : 7;
+  const headClass = 'text-[10px] uppercase tracking-wider text-gray-400 font-medium';
+
   return (
     <div>
-      <div className="flex items-center justify-between mb-6 flex-wrap gap-2">
-        <h1 className="text-2xl font-bold text-gray-900">Экспертизы для CRM</h1>
-        <Button variant="outline" onClick={exportExcel}>
-          <FileSpreadsheet className="h-4 w-4 mr-2" /> Экспорт Excel
-        </Button>
-      </div>
+      <PageHeader
+        title="Готовые экспертизы"
+        subtitle="Скачивание отчётов и отметка загрузки в CRM"
+        actions={
+          <Button variant="outline" onClick={exportExcel}>
+            <FileSpreadsheet className="h-4 w-4 mr-2" /> Экспорт Excel
+          </Button>
+        }
+      />
 
       {/* Tabs */}
-      <div className="flex gap-2 mb-4">
-        <Button variant={tab === 'completed' ? 'default' : 'outline'} size="sm" onClick={() => setTab('completed')}>
-          Готовые ({counts.completed})
+      <div className="flex gap-2 mb-4 stagger-in" style={{ animationDelay: '60ms' }}>
+        <Button
+          variant={tab === 'completed' ? 'default' : 'outline'}
+          size="sm"
+          onClick={() => setTab('completed')}
+          className="gap-2"
+        >
+          Готовые
+          <span className="ml-1 bg-white/20 text-xs px-1.5 py-0.5 rounded-full font-mono-tabular">
+            {counts.completed}
+          </span>
         </Button>
-        <Button variant={tab === 'uploaded_to_crm' ? 'default' : 'outline'} size="sm" onClick={() => setTab('uploaded_to_crm')}>
-          Загруженные ({counts.uploaded_to_crm})
+        <Button
+          variant={tab === 'uploaded_to_crm' ? 'default' : 'outline'}
+          size="sm"
+          onClick={() => setTab('uploaded_to_crm')}
+          className="gap-2"
+        >
+          Загруженные
+          <span className="ml-1 bg-white/20 text-xs px-1.5 py-0.5 rounded-full font-mono-tabular">
+            {counts.uploaded_to_crm}
+          </span>
         </Button>
       </div>
 
       {/* Filters */}
-      <Card className="mb-4">
-        <CardContent className="pt-4">
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-            <div>
-              <label className="text-xs text-gray-500 mb-1 block">Код CRM</label>
-              <Input placeholder="Поиск по коду CRM" value={crmSearch} onChange={e => setCrmSearch(e.target.value)} />
-            </div>
-            <div>
-              <label className="text-xs text-gray-500 mb-1 block">Дата от</label>
-              <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
-            </div>
-            <div>
-              <label className="text-xs text-gray-500 mb-1 block">Дата до</label>
-              <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
-            </div>
-            <div>
-              <label className="text-xs text-gray-500 mb-1 block">Проект</label>
-              <Select value={projectFilter} onValueChange={(v) => setProjectFilter(v ?? 'all')}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Все проекты</SelectItem>
-                  {uniqueProjects.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
+      <div
+        className="mb-4 rounded-2xl bg-white border border-gray-200/80 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-4 stagger-in"
+        style={{ animationDelay: '120ms' }}
+      >
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+          <div>
+            <label className="text-xs text-gray-500 mb-1 block">Код CRM</label>
+            <CrmSearch value={crmSearch} onChange={setCrmSearch} className="max-w-none" />
           </div>
-        </CardContent>
-      </Card>
+          <div>
+            <label className="text-xs text-gray-500 mb-1 block">Дата от</label>
+            <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+          </div>
+          <div>
+            <label className="text-xs text-gray-500 mb-1 block">Дата до</label>
+            <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
+          </div>
+          <div>
+            <label className="text-xs text-gray-500 mb-1 block">Проект</label>
+            <Select value={projectFilter} onValueChange={(v) => setProjectFilter(v ?? 'all')}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Все проекты</SelectItem>
+                {uniqueProjects.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      </div>
 
       {/* Bulk actions */}
       {selected.size > 0 && tab === 'completed' && (
-        <Card className="mb-4 border-blue-200 bg-blue-50">
-          <CardContent className="pt-3 pb-3 flex items-center justify-between flex-wrap gap-2">
-            <span className="text-sm text-blue-700">Выбрано: {selected.size}</span>
-            <div className="flex gap-2">
-              <Button size="sm" variant="outline" onClick={downloadSelectedZip} disabled={downloading}>
-                {downloading ? <Loader2 size={14} className="mr-1 animate-spin" /> : <FileDown size={14} className="mr-1" />}
-                Скачать ZIP
-              </Button>
-              <Button size="sm" onClick={bulkMarkUploaded}>
-                <CheckCircle2 size={14} className="mr-1" /> Отметить загруженными
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+        <div className="mb-4 rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-3 flex items-center justify-between flex-wrap gap-2">
+          <span className="text-sm text-indigo-700">
+            Выбрано: <span className="font-mono-tabular font-medium">{selected.size}</span>
+          </span>
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" onClick={downloadSelectedZip} disabled={downloading}>
+              {downloading ? <Loader2 size={14} className="mr-1 animate-spin" /> : <FileDown size={14} className="mr-1" />}
+              Скачать ZIP
+            </Button>
+            <Button size="sm" onClick={() => setConfirmOpen(true)}>
+              <CheckCircle2 size={14} className="mr-1" /> Отметить загруженными
+            </Button>
+          </div>
+        </div>
       )}
 
       {/* Table */}
-      <Card>
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
+      <div
+        className="rounded-2xl bg-white border border-gray-200/80 shadow-[0_1px_2px_rgba(0,0,0,0.04)] overflow-hidden stagger-in"
+        style={{ animationDelay: '180ms' }}
+      >
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                {tab === 'completed' && (
+                  <TableHead className="w-10">
+                    <Checkbox
+                      checked={selected.size === filteredApartments.length && filteredApartments.length > 0}
+                      onCheckedChange={toggleAll}
+                    />
+                  </TableHead>
+                )}
+                <TableHead className={headClass}>Код CRM</TableHead>
+                <TableHead className={headClass}>Дата</TableHead>
+                <TableHead className={headClass}>Проект</TableHead>
+                <TableHead className={headClass}>Адрес</TableHead>
+                <TableHead className={headClass}>Кв.</TableHead>
+                <TableHead className={headClass}>Подрядчик</TableHead>
+                <TableHead className={headClass}>Действия</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {loading ? (
+                <SkeletonTableRows rows={5} cols={colCount} />
+              ) : filteredApartments.length === 0 ? (
                 <TableRow>
-                  {tab === 'completed' && (
-                    <TableHead className="w-10">
-                      <Checkbox
-                        checked={selected.size === filteredApartments.length && filteredApartments.length > 0}
-                        onCheckedChange={toggleAll}
-                      />
-                    </TableHead>
-                  )}
-                  <TableHead>Код CRM</TableHead>
-                  <TableHead>Дата</TableHead>
-                  <TableHead>Проект</TableHead>
-                  <TableHead>Адрес</TableHead>
-                  <TableHead>Кв.</TableHead>
-                  <TableHead>Подрядчик</TableHead>
-                  <TableHead>Действия</TableHead>
+                  <TableCell colSpan={colCount} className="p-0">
+                    <EmptyState
+                      icon={Download}
+                      title={tab === 'completed' ? 'Нет готовых экспертиз' : 'Нет загруженных экспертиз'}
+                      description={
+                        crmSearch.trim()
+                          ? 'По заданному коду CRM ничего не найдено — проверьте фильтры'
+                          : 'Записи появятся здесь, когда подрядчики завершат экспертизы'
+                      }
+                    />
+                  </TableCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {loading ? (
-                  Array.from({ length: 5 }).map((_, i) => (
-                    <TableRow key={i}>
-                      {Array.from({ length: tab === 'completed' ? 8 : 7 }).map((_, j) => (
-                        <TableCell key={j}><div className="h-4 bg-gray-100 rounded animate-pulse" /></TableCell>
-                      ))}
-                    </TableRow>
-                  ))
-                ) : filteredApartments.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={tab === 'completed' ? 8 : 7} className="text-center py-8 text-gray-500">
-                      Нет данных
+              ) : (
+                filteredApartments.map(apt => (
+                  <TableRow key={apt.id}>
+                    {tab === 'completed' && (
+                      <TableCell>
+                        <Checkbox checked={selected.has(apt.id)} onCheckedChange={() => toggleSelect(apt.id)} />
+                      </TableCell>
+                    )}
+                    <TableCell className="whitespace-nowrap text-xs text-gray-500 font-mono-tabular">{apt.crm_code}</TableCell>
+                    <TableCell className="whitespace-nowrap">
+                      {apt.completed_at ? new Date(apt.completed_at).toLocaleDateString('ru') : '—'}
+                    </TableCell>
+                    <TableCell className="font-medium">{apt.project_name}</TableCell>
+                    <TableCell className="text-sm max-w-48 truncate">{apt.address}</TableCell>
+                    <TableCell className="font-mono-tabular">{apt.apartment_number}</TableCell>
+                    <TableCell>{(apt.contractor as unknown as { name: string })?.name ?? '—'}</TableCell>
+                    <TableCell>
+                      <div className="flex gap-2">
+                        {apt.report_file_path && (
+                          <Button size="sm" variant="outline" onClick={() => downloadPdf(apt)}>
+                            <Download size={14} className="mr-1" /> PDF
+                          </Button>
+                        )}
+                        {tab === 'completed' && (
+                          <Button size="sm" onClick={() => markUploaded(apt.id)}>
+                            <CheckCircle2 size={14} className="mr-1" /> В CRM
+                          </Button>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
-                ) : (
-                  filteredApartments.map(apt => (
-                    <TableRow key={apt.id}>
-                      {tab === 'completed' && (
-                        <TableCell>
-                          <Checkbox checked={selected.has(apt.id)} onCheckedChange={() => toggleSelect(apt.id)} />
-                        </TableCell>
-                      )}
-                      <TableCell className="whitespace-nowrap text-xs text-gray-500">{apt.crm_code}</TableCell>
-                      <TableCell className="whitespace-nowrap">
-                        {apt.completed_at ? new Date(apt.completed_at).toLocaleDateString('ru') : '—'}
-                      </TableCell>
-                      <TableCell className="font-medium">{apt.project_name}</TableCell>
-                      <TableCell className="text-sm max-w-48 truncate">{apt.address}</TableCell>
-                      <TableCell>{apt.apartment_number}</TableCell>
-                      <TableCell>{(apt.contractor as unknown as { name: string })?.name ?? '—'}</TableCell>
-                      <TableCell>
-                        <div className="flex gap-2">
-                          {apt.report_file_path && (
-                            <Button size="sm" variant="outline" onClick={() => downloadPdf(apt)}>
-                              <Download size={14} className="mr-1" /> PDF
-                            </Button>
-                          )}
-                          {tab === 'completed' && (
-                            <Button size="sm" onClick={() => markUploaded(apt.id)}>
-                              <CheckCircle2 size={14} className="mr-1" /> В CRM
-                            </Button>
-                          )}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      </div>
+
+      <ConfirmDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        title="Отметить загрузку в CRM?"
+        description={`Выбрано квартир: ${selected.size}. Действие переводит их в финальный статус.`}
+        confirmLabel="Отметить"
+        onConfirm={bulkMarkUploaded}
+      />
     </div>
   );
 }

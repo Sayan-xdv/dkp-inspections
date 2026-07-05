@@ -2,8 +2,6 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
@@ -12,7 +10,13 @@ import {
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { StatusBadge } from '@/components/apartments/status-badge';
-import { HardHat, Clock, CheckCircle2, AlertTriangle, Loader2 } from 'lucide-react';
+import { PageHeader } from '@/components/layout/page-header';
+import { KpiCard } from '@/components/dashboard/kpi-card';
+import { EmptyState } from '@/components/shared/empty-state';
+import { SkeletonTableRows } from '@/components/shared/skeleton-table';
+import { CrmSearch, filterByCrmCode } from '@/components/apartments/crm-search';
+import { getWaitingDays, getWaitingColor } from '@/lib/workflow/waiting';
+import { HardHat, Clock, CheckCircle2, AlertTriangle } from 'lucide-react';
 import type { Apartment, Contractor } from '@/lib/types/database';
 
 interface ContractorStats {
@@ -24,6 +28,8 @@ interface ContractorStats {
   rejected: number;
   total: number;
 }
+
+const TH_CLASS = 'text-[10px] uppercase tracking-wider text-gray-400 font-medium';
 
 export default function ContractorsOverviewPage() {
   const [contractors, setContractors] = useState<ContractorStats[]>([]);
@@ -87,180 +93,146 @@ export default function ContractorsOverviewPage() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  function getWaitingDays(receiptDate: string | null): number {
-    if (!receiptDate) return 0;
-    return Math.floor((Date.now() - new Date(receiptDate).getTime()) / (1000 * 60 * 60 * 24));
-  }
-
-  function getWaitingColor(receiptDate: string | null): string {
-    const days = getWaitingDays(receiptDate);
-    if (days > 10) return 'text-red-600 font-bold';
-    return 'text-gray-600';
-  }
-
-  const filteredApartments = crmSearch.trim()
-    ? apartments.filter(a => a.crm_code?.toLowerCase().includes(crmSearch.trim().toLowerCase()))
-    : apartments;
+  const filteredApartments = filterByCrmCode(apartments, crmSearch);
 
   const totalAssigned = contractors.reduce((s, c) => s + c.assigned, 0);
   const totalInProgress = contractors.reduce((s, c) => s + c.in_progress, 0);
   const totalCompleted = contractors.reduce((s, c) => s + c.completed, 0);
   const totalRejected = contractors.reduce((s, c) => s + c.rejected, 0);
 
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center h-64">
-        <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
-      </div>
-    );
-  }
-
   return (
     <div>
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">Обзор подрядчиков</h1>
+      <PageHeader title="Обзор подрядчиков" subtitle="Нагрузка и статусы по компаниям" />
 
-      {/* Summary cards */}
+      {/* Summary KPI */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <Card>
-          <CardContent className="pt-4 pb-4 text-center">
-            <Clock className="mx-auto h-5 w-5 text-indigo-500 mb-1" />
-            <p className="text-xs text-gray-500">Назначено</p>
-            <p className="text-2xl font-bold text-indigo-600">{totalAssigned}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-4 pb-4 text-center">
-            <HardHat className="mx-auto h-5 w-5 text-purple-500 mb-1" />
-            <p className="text-xs text-gray-500">В работе</p>
-            <p className="text-2xl font-bold text-purple-600">{totalInProgress}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-4 pb-4 text-center">
-            <CheckCircle2 className="mx-auto h-5 w-5 text-green-500 mb-1" />
-            <p className="text-xs text-gray-500">Готово</p>
-            <p className="text-2xl font-bold text-green-600">{totalCompleted}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-4 pb-4 text-center">
-            <AlertTriangle className="mx-auto h-5 w-5 text-orange-500 mb-1" />
-            <p className="text-xs text-gray-500">Возвраты</p>
-            <p className="text-2xl font-bold text-orange-600">{totalRejected}</p>
-          </CardContent>
-        </Card>
+        <KpiCard label="Назначено" value={totalAssigned} accent="indigo" icon={Clock} staggerDelay={0} />
+        <KpiCard label="В работе" value={totalInProgress} accent="purple" icon={HardHat} staggerDelay={70} />
+        <KpiCard label="Готово" value={totalCompleted} accent="emerald" icon={CheckCircle2} staggerDelay={140} />
+        <KpiCard label="Возвраты" value={totalRejected} accent="red" icon={AlertTriangle} staggerDelay={210} />
       </div>
 
       {/* Contractor stats table */}
-      <Card className="mb-6">
-        <CardHeader>
-          <CardTitle className="text-base">Статистика по подрядчикам</CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
+      <div
+        className="stagger-in mb-6 rounded-2xl bg-white border border-gray-200/80 shadow-[0_1px_2px_rgba(0,0,0,0.04)] overflow-hidden"
+        style={{ animationDelay: '280ms' }}
+      >
+        <div className="px-5 py-4 border-b border-gray-100">
+          <h2 className="text-base font-semibold text-gray-900">Статистика по подрядчикам</h2>
+        </div>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className={TH_CLASS}>Подрядчик</TableHead>
+              <TableHead className={`${TH_CLASS} text-center`}>Назначено</TableHead>
+              <TableHead className={`${TH_CLASS} text-center`}>В работе</TableHead>
+              <TableHead className={`${TH_CLASS} text-center`}>Готово</TableHead>
+              <TableHead className={`${TH_CLASS} text-center`}>Возвраты</TableHead>
+              <TableHead className={`${TH_CLASS} text-center`}>Всего</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {loading ? (
+              <SkeletonTableRows rows={4} cols={6} />
+            ) : (
+              contractors.map(c => (
+                <TableRow
+                  key={c.id}
+                  className="cursor-pointer hover:bg-indigo-50/40 transition-colors"
+                  onClick={() => setSelectedContractor(c.id)}
+                >
+                  <TableCell className="font-medium">{c.name}</TableCell>
+                  <TableCell className="text-center">
+                    {c.assigned > 0 ? <Badge variant="secondary" className="font-mono-tabular">{c.assigned}</Badge> : <span className="text-gray-300 font-mono-tabular">0</span>}
+                  </TableCell>
+                  <TableCell className="text-center">
+                    {c.in_progress > 0 ? <Badge className="bg-purple-100 text-purple-700 font-mono-tabular">{c.in_progress}</Badge> : <span className="text-gray-300 font-mono-tabular">0</span>}
+                  </TableCell>
+                  <TableCell className="text-center">
+                    {c.completed > 0 ? <Badge className="bg-green-100 text-green-700 font-mono-tabular">{c.completed}</Badge> : <span className="text-gray-300 font-mono-tabular">0</span>}
+                  </TableCell>
+                  <TableCell className="text-center">
+                    {c.rejected > 0 ? <Badge className="bg-orange-100 text-orange-700 font-mono-tabular">{c.rejected}</Badge> : <span className="text-gray-300 font-mono-tabular">0</span>}
+                  </TableCell>
+                  <TableCell className="text-center font-medium font-mono-tabular">{c.total}</TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </div>
+
+      {/* Detail: active assignments */}
+      <div
+        className="stagger-in rounded-2xl bg-white border border-gray-200/80 shadow-[0_1px_2px_rgba(0,0,0,0.04)] overflow-hidden"
+        style={{ animationDelay: '360ms' }}
+      >
+        <div className="px-5 py-4 border-b border-gray-100">
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <h2 className="text-base font-semibold text-gray-900">Активные задания</h2>
+            <div className="flex items-center gap-3">
+              <CrmSearch value={crmSearch} onChange={setCrmSearch} className="w-[200px]" />
+              <Select value={selectedContractor} onValueChange={(v) => setSelectedContractor(v ?? 'all')}>
+                <SelectTrigger className="w-[200px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Все подрядчики</SelectItem>
+                  {contractors.map(c => (
+                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </div>
+        <div className="overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Подрядчик</TableHead>
-                <TableHead className="text-center">Назначено</TableHead>
-                <TableHead className="text-center">В работе</TableHead>
-                <TableHead className="text-center">Готово</TableHead>
-                <TableHead className="text-center">Возвраты</TableHead>
-                <TableHead className="text-center">Всего</TableHead>
+                <TableHead className={TH_CLASS}>Код CRM</TableHead>
+                <TableHead className={TH_CLASS}>Проект</TableHead>
+                <TableHead className={TH_CLASS}>Адрес</TableHead>
+                <TableHead className={TH_CLASS}>Кв.</TableHead>
+                <TableHead className={TH_CLASS}>Подрядчик</TableHead>
+                <TableHead className={TH_CLASS}>Статус</TableHead>
+                <TableHead className={TH_CLASS}>Ожидание</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {contractors.map(c => (
-                <TableRow key={c.id} className="cursor-pointer hover:bg-gray-50" onClick={() => setSelectedContractor(c.id)}>
-                  <TableCell className="font-medium">{c.name}</TableCell>
-                  <TableCell className="text-center">
-                    {c.assigned > 0 ? <Badge variant="secondary">{c.assigned}</Badge> : <span className="text-gray-300">0</span>}
-                  </TableCell>
-                  <TableCell className="text-center">
-                    {c.in_progress > 0 ? <Badge className="bg-purple-100 text-purple-700">{c.in_progress}</Badge> : <span className="text-gray-300">0</span>}
-                  </TableCell>
-                  <TableCell className="text-center">
-                    {c.completed > 0 ? <Badge className="bg-green-100 text-green-700">{c.completed}</Badge> : <span className="text-gray-300">0</span>}
-                  </TableCell>
-                  <TableCell className="text-center">
-                    {c.rejected > 0 ? <Badge className="bg-orange-100 text-orange-700">{c.rejected}</Badge> : <span className="text-gray-300">0</span>}
-                  </TableCell>
-                  <TableCell className="text-center font-medium">{c.total}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
-
-      {/* Detail: active assignments */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between flex-wrap gap-3">
-            <CardTitle className="text-base">Активные задания</CardTitle>
-            <div className="flex items-center gap-3">
-              <Input
-                placeholder="Поиск по коду CRM"
-                value={crmSearch}
-                onChange={e => setCrmSearch(e.target.value)}
-                className="w-[200px]"
-              />
-            <Select value={selectedContractor} onValueChange={(v) => setSelectedContractor(v ?? 'all')}>
-              <SelectTrigger className="w-[200px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Все подрядчики</SelectItem>
-                {contractors.map(c => (
-                  <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
+              {loading ? (
+                <SkeletonTableRows rows={6} cols={7} />
+              ) : filteredApartments.length === 0 ? (
                 <TableRow>
-                  <TableHead>Код CRM</TableHead>
-                  <TableHead>Проект</TableHead>
-                  <TableHead>Адрес</TableHead>
-                  <TableHead>Кв.</TableHead>
-                  <TableHead>Подрядчик</TableHead>
-                  <TableHead>Статус</TableHead>
-                  <TableHead>Ожидание</TableHead>
+                  <TableCell colSpan={7} className="p-0">
+                    <EmptyState
+                      icon={HardHat}
+                      title="Нет активных заданий"
+                      description="Назначенные и находящиеся в работе квартиры появятся здесь"
+                    />
+                  </TableCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredApartments.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={7} className="text-center py-8 text-gray-500">
-                      Нет активных заданий
+              ) : (
+                filteredApartments.map(apt => (
+                  <TableRow key={apt.id}>
+                    <TableCell className="whitespace-nowrap text-xs text-gray-500 font-mono-tabular">{apt.crm_code}</TableCell>
+                    <TableCell className="font-medium">{apt.project_name}</TableCell>
+                    <TableCell className="text-sm max-w-48 truncate">{apt.address}</TableCell>
+                    <TableCell className="font-mono-tabular">{apt.apartment_number}</TableCell>
+                    <TableCell>
+                      {contractors.find(c => c.id === apt.contractor_id)?.name ?? '—'}
+                    </TableCell>
+                    <TableCell><StatusBadge status={apt.status} /></TableCell>
+                    <TableCell className={`font-mono-tabular ${getWaitingColor(apt.receipt_date)}`}>
+                      {getWaitingDays(apt.receipt_date)} дн.
                     </TableCell>
                   </TableRow>
-                ) : (
-                  filteredApartments.map(apt => (
-                    <TableRow key={apt.id}>
-                      <TableCell className="whitespace-nowrap text-xs text-gray-500">{apt.crm_code}</TableCell>
-                      <TableCell className="font-medium">{apt.project_name}</TableCell>
-                      <TableCell className="text-sm max-w-48 truncate">{apt.address}</TableCell>
-                      <TableCell>{apt.apartment_number}</TableCell>
-                      <TableCell>
-                        {contractors.find(c => c.id === apt.contractor_id)?.name ?? '—'}
-                      </TableCell>
-                      <TableCell><StatusBadge status={apt.status} /></TableCell>
-                      <TableCell className={getWaitingColor(apt.receipt_date)}>
-                        {getWaitingDays(apt.receipt_date)} дн.
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      </div>
     </div>
   );
 }

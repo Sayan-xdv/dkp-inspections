@@ -5,10 +5,10 @@ import { createClient } from '@/lib/supabase/client';
 import type { Profile, Contractor, AppRole } from '@/lib/types/database';
 import { ROLE_CONFIG } from '@/lib/types/database';
 import { toast } from 'sonner';
-import { Plus, UserCog, Loader2 } from 'lucide-react';
+import { Plus, Users, Loader2 } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -22,9 +22,20 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog';
 import { Switch } from '@/components/ui/switch';
-import { Skeleton } from '@/components/ui/skeleton';
+import { PageHeader } from '@/components/layout/page-header';
+import { EmptyState } from '@/components/shared/empty-state';
+import { SkeletonTableRows } from '@/components/shared/skeleton-table';
+import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 
 const ROLES = Object.entries(ROLE_CONFIG) as [AppRole, { label: string; defaultPath: string }][];
+
+const ROLE_BADGE_CLASSES: Record<AppRole, string> = {
+  admin: 'bg-indigo-50 text-indigo-700 border-indigo-200',
+  contractor: 'bg-purple-50 text-purple-700 border-purple-200',
+  sales: 'bg-blue-50 text-blue-700 border-blue-200',
+  settlement: 'bg-amber-50 text-amber-700 border-amber-200',
+  crm_loader: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+};
 
 export default function UsersPage() {
   const supabase = createClient();
@@ -34,6 +45,7 @@ export default function UsersPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [editingRole, setEditingRole] = useState<string | null>(null);
+  const [pendingDeactivate, setPendingDeactivate] = useState<{ id: string; email: string } | null>(null);
 
   // Form state
   const [email, setEmail] = useState('');
@@ -145,17 +157,17 @@ export default function UsersPage() {
   };
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Пользователи</h1>
-          <p className="text-muted-foreground">Управление пользователями системы</p>
-        </div>
-        <Button onClick={() => { resetForm(); setDialogOpen(true); }}>
-          <Plus className="h-4 w-4 mr-2" />
-          Создать пользователя
-        </Button>
-      </div>
+    <div>
+      <PageHeader
+        title="Пользователи"
+        subtitle="Управление доступом к платформе"
+        actions={
+          <Button onClick={() => { resetForm(); setDialogOpen(true); }}>
+            <Plus className="h-4 w-4 mr-2" />
+            Создать пользователя
+          </Button>
+        }
+      />
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>
             <DialogHeader>
@@ -236,36 +248,49 @@ export default function UsersPage() {
         </DialogContent>
       </Dialog>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <UserCog className="h-5 w-5" />
-            Список пользователей
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="space-y-3">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <Skeleton key={i} className="h-12 w-full" />
-              ))}
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Email</TableHead>
-                  <TableHead>ФИО</TableHead>
-                  <TableHead>Роль</TableHead>
-                  <TableHead>Подрядчик</TableHead>
-                  <TableHead>Статус</TableHead>
-                  <TableHead className="w-[100px]">Действия</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {users.map((user) => (
+      <ConfirmDialog
+        open={pendingDeactivate !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingDeactivate(null);
+        }}
+        title="Деактивировать пользователя?"
+        description={`Пользователь ${pendingDeactivate?.email ?? ''} потеряет доступ к платформе.`}
+        destructive
+        confirmLabel="Деактивировать"
+        onConfirm={async () => {
+          if (pendingDeactivate) await handleToggleActive(pendingDeactivate.id, false);
+        }}
+      />
+
+      <div
+        className="rounded-2xl bg-white border border-gray-200/80 shadow-[0_1px_2px_rgba(0,0,0,0.04)] overflow-hidden stagger-in"
+        style={{ animationDelay: '80ms' }}
+      >
+        {!loading && users.length === 0 ? (
+          <EmptyState
+            icon={Users}
+            title="Пользователи не найдены"
+            description="Создайте первого пользователя, чтобы выдать доступ к платформе."
+          />
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="text-[10px] uppercase tracking-wider text-gray-400 font-medium">Email</TableHead>
+                <TableHead className="text-[10px] uppercase tracking-wider text-gray-400 font-medium">ФИО</TableHead>
+                <TableHead className="text-[10px] uppercase tracking-wider text-gray-400 font-medium">Роль</TableHead>
+                <TableHead className="text-[10px] uppercase tracking-wider text-gray-400 font-medium">Подрядчик</TableHead>
+                <TableHead className="text-[10px] uppercase tracking-wider text-gray-400 font-medium">Статус</TableHead>
+                <TableHead className="w-[100px] text-[10px] uppercase tracking-wider text-gray-400 font-medium">Действия</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {loading ? (
+                <SkeletonTableRows rows={5} cols={6} />
+              ) : (
+                users.map((user) => (
                   <TableRow key={user.id}>
-                    <TableCell className="font-medium">{user.email}</TableCell>
+                    <TableCell className="font-mono-tabular font-medium">{user.email}</TableCell>
                     <TableCell>{user.full_name}</TableCell>
                     <TableCell>
                       {editingRole === user.id ? (
@@ -297,8 +322,8 @@ export default function UsersPage() {
                         </div>
                       ) : (
                         <Badge
-                          variant="secondary"
-                          className="cursor-pointer"
+                          variant="outline"
+                          className={cn('cursor-pointer', ROLE_BADGE_CLASSES[user.role])}
                           onClick={() => setEditingRole(user.id)}
                         >
                           {ROLE_CONFIG[user.role]?.label ?? user.role}
@@ -313,9 +338,13 @@ export default function UsersPage() {
                     <TableCell>
                       <Switch
                         checked={user.is_active}
-                        onCheckedChange={(checked) =>
-                          handleToggleActive(user.id, checked)
-                        }
+                        onCheckedChange={(checked) => {
+                          if (checked) {
+                            handleToggleActive(user.id, true);
+                          } else {
+                            setPendingDeactivate({ id: user.id, email: user.email });
+                          }
+                        }}
                       />
                     </TableCell>
                     <TableCell>
@@ -324,19 +353,12 @@ export default function UsersPage() {
                       </Badge>
                     </TableCell>
                   </TableRow>
-                ))}
-                {users.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
-                      Пользователи не найдены
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        )}
+      </div>
     </div>
   );
 }

@@ -76,7 +76,11 @@ export async function POST(request: Request) {
     const projectName = String(row.project_name || '').trim();
     const projectInfo = projectMap.get(projectName.toUpperCase());
 
-    const receiptDate = new Date().toISOString().split('T')[0];
+    // Дата поступления из выгрузки, если есть; иначе — сегодня
+    const rawReceipt = row.receipt_date ? new Date(String(row.receipt_date)) : null;
+    const receiptDate = rawReceipt && !isNaN(rawReceipt.getTime())
+      ? rawReceipt.toISOString().split('T')[0]
+      : new Date().toISOString().split('T')[0];
     let deadline = row.contract_expiry ? String(row.contract_expiry) : null;
     if (!deadline) {
       const d = new Date();
@@ -122,7 +126,10 @@ export async function POST(request: Request) {
     }
   }
 
-  skipped = rows.length - imported - duplicates - errors.length;
+  // skipped = строки, отклонённые построчной валидацией (ошибки уровня
+  // вставки имеют row: 0 и не относятся к конкретной строке)
+  const rowErrors = errors.filter(e => e.row > 0).length;
+  skipped = Math.max(0, rows.length - imported - duplicates - rowErrors);
 
   // Update batch
   if (batch?.id) {

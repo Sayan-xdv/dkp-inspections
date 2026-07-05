@@ -2,14 +2,18 @@
 
 import { useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
-import { Upload, FileSpreadsheet, Loader2, CheckCircle2 } from 'lucide-react';
+import {
+  Upload, FileSpreadsheet, Loader2, CheckCircle2, AlertTriangle, Copy,
+} from 'lucide-react';
 import { toast } from 'sonner';
+import { PageHeader } from '@/components/layout/page-header';
+import { KpiCard } from '@/components/dashboard/kpi-card';
+import { SkeletonTableRows } from '@/components/shared/skeleton-table';
 import { parseExcelFile } from '@/lib/excel/parser';
-import type { ParseResult, ParsedRow } from '@/lib/excel/column-mapping';
+import type { ParseResult } from '@/lib/excel/column-mapping';
 
 export default function UploadPage() {
   const [dragOver, setDragOver] = useState(false);
@@ -73,77 +77,96 @@ export default function UploadPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">Загрузка Excel</h1>
+      <PageHeader title="Загрузка Excel" subtitle="Импорт квартир из выгрузки CRM" />
 
       {/* Drop zone */}
-      <Card className="mb-6">
-        <CardContent className="pt-6">
-          <div
-            onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-            onDragLeave={() => setDragOver(false)}
-            onDrop={handleDrop}
-            className={`border-2 border-dashed rounded-xl p-12 text-center transition-colors cursor-pointer ${
-              dragOver ? 'border-blue-400 bg-blue-50' : 'border-gray-300 hover:border-gray-400'
-            }`}
-            onClick={() => {
-              const input = document.createElement('input');
-              input.type = 'file';
-              input.accept = '.xlsx,.xls';
-              input.onchange = (e) => {
-                const file = (e.target as HTMLInputElement).files?.[0];
-                if (file) handleFile(file);
-              };
-              input.click();
-            }}
-          >
-            {parseResult ? (
-              <FileSpreadsheet className="mx-auto h-12 w-12 text-green-500 mb-3" />
-            ) : (
-              <Upload className="mx-auto h-12 w-12 text-gray-400 mb-3" />
-            )}
-            <p className="text-lg font-medium text-gray-700">
-              {parseResult ? fileName : 'Перетащите файл Excel сюда'}
-            </p>
-            <p className="text-sm text-gray-500 mt-1">
-              {parseResult
-                ? `Обработано: ${parseResult.rows.length} строк`
-                : 'или нажмите для выбора файла (.xlsx, .xls)'}
-            </p>
-          </div>
-        </CardContent>
-      </Card>
+      <div
+        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={handleDrop}
+        className={`stagger-in mb-6 rounded-2xl border-2 border-dashed bg-white p-12 text-center transition cursor-pointer ${
+          dragOver
+            ? 'border-indigo-400 bg-indigo-50/30'
+            : 'border-gray-300 hover:border-indigo-400 hover:bg-indigo-50/30'
+        }`}
+        style={{ animationDelay: '60ms' }}
+        onClick={() => {
+          const input = document.createElement('input');
+          input.type = 'file';
+          input.accept = '.xlsx,.xls';
+          input.onchange = (e) => {
+            const file = (e.target as HTMLInputElement).files?.[0];
+            if (file) handleFile(file);
+          };
+          input.click();
+        }}
+      >
+        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-indigo-50">
+          {parseResult ? (
+            <FileSpreadsheet className="h-7 w-7 text-emerald-500" />
+          ) : (
+            <Upload className="h-7 w-7 text-indigo-500" />
+          )}
+        </div>
+        <p className="text-lg font-medium text-gray-700">
+          {parseResult ? fileName : 'Перетащите файл Excel сюда'}
+        </p>
+        <p className="text-sm text-gray-500 mt-1">
+          {parseResult
+            ? `Обработано: ${parseResult.rows.length} строк`
+            : 'или нажмите для выбора файла (.xlsx, .xls)'}
+        </p>
+      </div>
 
-      {/* Parse stats */}
+      {/* Parse / import stats */}
       {parseResult && (
         <>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-            <Card>
-              <CardContent className="pt-4">
-                <p className="text-sm text-gray-500">Всего строк</p>
-                <p className="text-2xl font-bold">{parseResult.rows.length}</p>
-              </CardContent>
-            </Card>
-            <Card className="border-green-200">
-              <CardContent className="pt-4">
-                <p className="text-sm text-green-600">Пройдут фильтр (импорт)</p>
-                <p className="text-2xl font-bold text-green-700">{parseResult.filtered.length}</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-4">
-                <p className="text-sm text-gray-500">Пропущено (фильтр)</p>
-                <p className="text-2xl font-bold text-gray-400">{parseResult.skipped}</p>
-              </CardContent>
-            </Card>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            <KpiCard
+              label="Всего строк"
+              value={parseResult.rows.length}
+              icon={FileSpreadsheet}
+              accent="indigo"
+              staggerDelay={0}
+            />
+            <KpiCard
+              label={importResult ? 'Импортировано' : 'Пройдут фильтр'}
+              value={importResult ? importResult.imported : parseResult.filtered.length}
+              icon={CheckCircle2}
+              accent="emerald"
+              staggerDelay={70}
+            />
+            <KpiCard
+              label="Пропущено"
+              value={importResult ? importResult.skipped : parseResult.skipped}
+              icon={AlertTriangle}
+              accent="amber"
+              staggerDelay={140}
+            />
+            {importResult && (
+              <KpiCard
+                label="Дубликаты"
+                value={importResult.duplicates}
+                icon={Copy}
+                accent="purple"
+                staggerDelay={210}
+              />
+            )}
           </div>
 
           {/* Preview table */}
           {parseResult.filtered.length > 0 && (
-            <Card className="mb-6">
-              <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle className="text-lg">
-                  Предпросмотр ({parseResult.filtered.length} квартир)
-                </CardTitle>
+            <div
+              className="stagger-in mb-6 rounded-2xl bg-white border border-gray-200/80 shadow-[0_1px_2px_rgba(0,0,0,0.04)] overflow-hidden"
+              style={{ animationDelay: '160ms' }}
+            >
+              <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-gray-100">
+                <h2 className="text-sm font-semibold text-gray-900">
+                  Предпросмотр{' '}
+                  <span className="font-mono-tabular font-normal text-gray-400">
+                    ({parseResult.filtered.length} квартир)
+                  </span>
+                </h2>
                 <Button onClick={handleImport} disabled={importing || !!importResult}>
                   {importing ? (
                     <Loader2 className="h-4 w-4 animate-spin mr-2" />
@@ -152,68 +175,63 @@ export default function UploadPage() {
                   ) : null}
                   {importResult ? 'Импортировано' : 'Импортировать'}
                 </Button>
-              </CardHeader>
-              <CardContent>
-                <div className="max-h-96 overflow-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Проект</TableHead>
-                        <TableHead>Адрес</TableHead>
-                        <TableHead>Кв.</TableHead>
-                        <TableHead>м²</TableHead>
-                        <TableHead>Отделка</TableHead>
-                        <TableHead>Статус ОВП</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {parseResult.filtered.slice(0, 50).map((row, i) => (
+              </div>
+              <div className="max-h-96 overflow-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="text-[10px] uppercase tracking-wider text-gray-400 font-medium">Проект</TableHead>
+                      <TableHead className="text-[10px] uppercase tracking-wider text-gray-400 font-medium">Адрес</TableHead>
+                      <TableHead className="text-[10px] uppercase tracking-wider text-gray-400 font-medium">Кв.</TableHead>
+                      <TableHead className="text-[10px] uppercase tracking-wider text-gray-400 font-medium">м²</TableHead>
+                      <TableHead className="text-[10px] uppercase tracking-wider text-gray-400 font-medium">Отделка</TableHead>
+                      <TableHead className="text-[10px] uppercase tracking-wider text-gray-400 font-medium">Статус ОВП</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {importing ? (
+                      <SkeletonTableRows rows={8} cols={6} />
+                    ) : (
+                      parseResult.filtered.slice(0, 50).map((row, i) => (
                         <TableRow key={i}>
                           <TableCell className="font-medium">{row.project_name}</TableCell>
                           <TableCell className="text-sm">{row.address}</TableCell>
-                          <TableCell>{row.apartment_number}</TableCell>
-                          <TableCell>{row.area_sqm}</TableCell>
+                          <TableCell className="font-mono-tabular">{row.apartment_number}</TableCell>
+                          <TableCell className="font-mono-tabular">{row.area_sqm}</TableCell>
                           <TableCell>{row.finish_type}</TableCell>
                           <TableCell>{row.ovp_status}</TableCell>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                  {parseResult.filtered.length > 50 && (
-                    <p className="text-sm text-gray-500 mt-2 text-center">
-                      ... и ещё {parseResult.filtered.length - 50} строк
-                    </p>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+                {!importing && parseResult.filtered.length > 50 && (
+                  <p className="text-sm text-gray-500 py-2 text-center">
+                    ... и ещё <span className="font-mono-tabular">{parseResult.filtered.length - 50}</span> строк
+                  </p>
+                )}
+              </div>
+            </div>
           )}
 
-          {/* Import result */}
-          {importResult && (
-            <Card className="border-green-200 bg-green-50">
-              <CardContent className="pt-4">
-                <h3 className="font-bold text-green-800 mb-2">Результат импорта</h3>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
-                  <div>
-                    <span className="text-green-600">Импортировано:</span>{' '}
-                    <strong>{importResult.imported}</strong>
-                  </div>
-                  <div>
-                    <span className="text-yellow-600">Дубликаты:</span>{' '}
-                    <strong>{importResult.duplicates}</strong>
-                  </div>
-                  <div>
-                    <span className="text-gray-500">Пропущено:</span>{' '}
-                    <strong>{importResult.skipped}</strong>
-                  </div>
-                  <div>
-                    <span className="text-red-600">Ошибки:</span>{' '}
-                    <strong>{importResult.errors.length}</strong>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+          {/* Import errors */}
+          {importResult && importResult.errors.length > 0 && (
+            <div className="stagger-in rounded-2xl border border-red-200 bg-red-50 p-5">
+              <div className="flex items-center gap-2 mb-3">
+                <AlertTriangle className="h-4 w-4 text-red-600" />
+                <h3 className="font-semibold text-red-800">
+                  Ошибки импорта{' '}
+                  <span className="font-mono-tabular font-normal">({importResult.errors.length})</span>
+                </h3>
+              </div>
+              <ul className="space-y-1 text-sm text-red-700 max-h-48 overflow-auto">
+                {importResult.errors.map((err, i) => (
+                  <li key={i}>
+                    <span className="font-mono-tabular font-medium">Строка {err.row}:</span> {err.error}
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
         </>
       )}

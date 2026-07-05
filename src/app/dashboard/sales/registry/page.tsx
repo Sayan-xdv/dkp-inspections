@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent } from '@/components/ui/card';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
@@ -12,9 +11,14 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import { StatusBadge } from '@/components/apartments/status-badge';
-import { Download, ChevronLeft, ChevronRight } from 'lucide-react';
+import { PageHeader } from '@/components/layout/page-header';
+import { EmptyState } from '@/components/shared/empty-state';
+import { SkeletonTableRows } from '@/components/shared/skeleton-table';
+import { CrmSearch } from '@/components/apartments/crm-search';
+import { getWaitingDays, getWaitingColor } from '@/lib/workflow/waiting';
+import { Download, ChevronLeft, ChevronRight, ClipboardList } from 'lucide-react';
 import { toast } from 'sonner';
-import type { Apartment, ApartmentStatus, Contractor, Project } from '@/lib/types/database';
+import type { Apartment, Contractor, Project } from '@/lib/types/database';
 import { STATUS_CONFIG } from '@/lib/types/database';
 import * as XLSX from 'xlsx';
 
@@ -74,17 +78,6 @@ export default function RegistryPage() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  function getWaitingDays(receiptDate: string | null): number {
-    if (!receiptDate) return 0;
-    return Math.floor((Date.now() - new Date(receiptDate).getTime()) / (1000 * 60 * 60 * 24));
-  }
-
-  function getWaitingColor(receiptDate: string | null): string {
-    const days = getWaitingDays(receiptDate);
-    if (days > 10) return 'text-red-600 font-bold';
-    return 'text-gray-600';
-  }
-
   const exportExcel = () => {
     const ws = XLSX.utils.json_to_sheet(
       apartments.map(a => ({
@@ -112,158 +105,163 @@ export default function RegistryPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Реестр квартир</h1>
-        <Button variant="outline" onClick={exportExcel}>
-          <Download className="h-4 w-4 mr-2" />
-          Экспорт Excel
-        </Button>
-      </div>
+      <PageHeader
+        title="Реестр квартир"
+        subtitle="Все квартиры платформы с фильтрами"
+        actions={
+          <Button variant="outline" onClick={exportExcel}>
+            <Download className="h-4 w-4 mr-2" />
+            Экспорт Excel
+          </Button>
+        }
+      />
 
       {/* Filters */}
-      <Card className="mb-6">
-        <CardContent className="pt-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
-            <div>
-              <label className="text-xs text-gray-500 mb-1 block">Код CRM</label>
-              <Input placeholder="Поиск по коду CRM" value={crmSearch} onChange={e => { setCrmSearch(e.target.value); setPage(0); }} />
-            </div>
-            <div>
-              <label className="text-xs text-gray-500 mb-1 block">Дата от</label>
-              <Input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setPage(0); }} />
-            </div>
-            <div>
-              <label className="text-xs text-gray-500 mb-1 block">Дата до</label>
-              <Input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setPage(0); }} />
-            </div>
-            <div>
-              <label className="text-xs text-gray-500 mb-1 block">Проект</label>
-              <Select value={projectFilter} onValueChange={v => { setProjectFilter(v ?? 'all'); setPage(0); }}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Все проекты</SelectItem>
-                  {uniqueProjects.map(p => (
-                    <SelectItem key={p} value={p}>{p}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <label className="text-xs text-gray-500 mb-1 block">Статус</label>
-              <Select value={statusFilter} onValueChange={v => { setStatusFilter(v ?? 'all'); setPage(0); }}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Все статусы</SelectItem>
-                  {Object.entries(STATUS_CONFIG).map(([key, cfg]) => (
-                    <SelectItem key={key} value={key}>{cfg.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <label className="text-xs text-gray-500 mb-1 block">Подрядчик</label>
-              <Select value={contractorFilter} onValueChange={v => { setContractorFilter(v ?? 'all'); setPage(0); }}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Все подрядчики</SelectItem>
-                  {contractors.map(c => (
-                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+      <div
+        className="mb-6 rounded-2xl bg-white border border-gray-200/80 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-4 stagger-in"
+        style={{ animationDelay: '80ms' }}
+      >
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
+          <div>
+            <label className="text-xs text-gray-500 mb-1 block">Код CRM</label>
+            <CrmSearch
+              value={crmSearch}
+              onChange={v => { setCrmSearch(v); setPage(0); }}
+              className="max-w-none"
+            />
           </div>
-        </CardContent>
-      </Card>
+          <div>
+            <label className="text-xs text-gray-500 mb-1 block">Дата от</label>
+            <Input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setPage(0); }} />
+          </div>
+          <div>
+            <label className="text-xs text-gray-500 mb-1 block">Дата до</label>
+            <Input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setPage(0); }} />
+          </div>
+          <div>
+            <label className="text-xs text-gray-500 mb-1 block">Проект</label>
+            <Select value={projectFilter} onValueChange={v => { setProjectFilter(v ?? 'all'); setPage(0); }}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Все проекты</SelectItem>
+                {uniqueProjects.map(p => (
+                  <SelectItem key={p} value={p}>{p}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <label className="text-xs text-gray-500 mb-1 block">Статус</label>
+            <Select value={statusFilter} onValueChange={v => { setStatusFilter(v ?? 'all'); setPage(0); }}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Все статусы</SelectItem>
+                {Object.entries(STATUS_CONFIG).map(([key, cfg]) => (
+                  <SelectItem key={key} value={key}>{cfg.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <label className="text-xs text-gray-500 mb-1 block">Подрядчик</label>
+            <Select value={contractorFilter} onValueChange={v => { setContractorFilter(v ?? 'all'); setPage(0); }}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Все подрядчики</SelectItem>
+                {contractors.map(c => (
+                  <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      </div>
 
       {/* Table */}
-      <Card>
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
+      <div
+        className="rounded-2xl bg-white border border-gray-200/80 shadow-[0_1px_2px_rgba(0,0,0,0.04)] overflow-hidden stagger-in"
+        style={{ animationDelay: '160ms' }}
+      >
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="text-[10px] uppercase tracking-wider text-gray-400 font-medium">Код CRM</TableHead>
+                <TableHead className="text-[10px] uppercase tracking-wider text-gray-400 font-medium">Дата</TableHead>
+                <TableHead className="text-[10px] uppercase tracking-wider text-gray-400 font-medium">Проект</TableHead>
+                <TableHead className="text-[10px] uppercase tracking-wider text-gray-400 font-medium">Адрес</TableHead>
+                <TableHead className="text-[10px] uppercase tracking-wider text-gray-400 font-medium">Дом</TableHead>
+                <TableHead className="text-[10px] uppercase tracking-wider text-gray-400 font-medium">Кв.</TableHead>
+                <TableHead className="text-[10px] uppercase tracking-wider text-gray-400 font-medium">м²</TableHead>
+                <TableHead className="text-[10px] uppercase tracking-wider text-gray-400 font-medium">Отделка</TableHead>
+                <TableHead className="text-[10px] uppercase tracking-wider text-gray-400 font-medium">Статус</TableHead>
+                <TableHead className="text-[10px] uppercase tracking-wider text-gray-400 font-medium">Подрядчик</TableHead>
+                <TableHead className="text-[10px] uppercase tracking-wider text-gray-400 font-medium">Ожидание</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {loading ? (
+                <SkeletonTableRows rows={11} cols={11} />
+              ) : apartments.length === 0 ? (
                 <TableRow>
-                  <TableHead>Код CRM</TableHead>
-                  <TableHead>Дата</TableHead>
-                  <TableHead>Проект</TableHead>
-                  <TableHead>Адрес</TableHead>
-                  <TableHead>Дом</TableHead>
-                  <TableHead>Кв.</TableHead>
-                  <TableHead>м²</TableHead>
-                  <TableHead>Отделка</TableHead>
-                  <TableHead>Статус</TableHead>
-                  <TableHead>Подрядчик</TableHead>
-                  <TableHead>Ожидание</TableHead>
+                  <TableCell colSpan={11} className="p-0">
+                    <EmptyState
+                      icon={ClipboardList}
+                      title="Нет данных"
+                      description="Квартиры по заданным фильтрам не найдены"
+                    />
+                  </TableCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {loading ? (
-                  Array.from({ length: 11 }).map((_, i) => (
-                    <TableRow key={i}>
-                      {Array.from({ length: 11 }).map((_, j) => (
-                        <TableCell key={j}>
-                          <div className="h-4 bg-gray-100 rounded animate-pulse" />
-                        </TableCell>
-                      ))}
-                    </TableRow>
-                  ))
-                ) : apartments.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={11} className="text-center py-8 text-gray-500">
-                      Нет данных
+              ) : (
+                apartments.map((apt) => (
+                  <TableRow key={apt.id}>
+                    <TableCell className="whitespace-nowrap text-xs text-gray-500 font-mono-tabular">{apt.crm_code}</TableCell>
+                    <TableCell className="whitespace-nowrap font-mono-tabular">{apt.receipt_date}</TableCell>
+                    <TableCell className="font-medium">{apt.project_name}</TableCell>
+                    <TableCell className="text-sm max-w-48 truncate">{apt.address}</TableCell>
+                    <TableCell className="font-mono-tabular">{apt.building_number}</TableCell>
+                    <TableCell className="font-mono-tabular">{apt.apartment_number}</TableCell>
+                    <TableCell className="font-mono-tabular">{apt.area_sqm}</TableCell>
+                    <TableCell>{apt.finish_type}</TableCell>
+                    <TableCell><StatusBadge status={apt.status} /></TableCell>
+                    <TableCell>{(apt.contractor as unknown as { name: string })?.name ?? '—'}</TableCell>
+                    <TableCell className={`font-mono-tabular ${getWaitingColor(apt.receipt_date)}`}>
+                      {getWaitingDays(apt.receipt_date)} дн.
                     </TableCell>
                   </TableRow>
-                ) : (
-                  apartments.map((apt) => (
-                    <TableRow key={apt.id}>
-                      <TableCell className="whitespace-nowrap text-xs text-gray-500">{apt.crm_code}</TableCell>
-                      <TableCell className="whitespace-nowrap">{apt.receipt_date}</TableCell>
-                      <TableCell className="font-medium">{apt.project_name}</TableCell>
-                      <TableCell className="text-sm max-w-48 truncate">{apt.address}</TableCell>
-                      <TableCell>{apt.building_number}</TableCell>
-                      <TableCell>{apt.apartment_number}</TableCell>
-                      <TableCell>{apt.area_sqm}</TableCell>
-                      <TableCell>{apt.finish_type}</TableCell>
-                      <TableCell><StatusBadge status={apt.status} /></TableCell>
-                      <TableCell>{(apt.contractor as unknown as { name: string })?.name ?? '—'}</TableCell>
-                      <TableCell className={getWaitingColor(apt.receipt_date)}>
-                        {getWaitingDays(apt.receipt_date)} дн.
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
 
-          {/* Pagination */}
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between px-4 py-3 border-t">
-              <span className="text-sm text-gray-500">
-                {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} из {total}
-              </span>
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPage(p => Math.max(0, p - 1))}
-                  disabled={page === 0}
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
-                  disabled={page >= totalPages - 1}
-                >
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-              </div>
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200/80">
+            <span className="text-sm text-gray-500 font-mono-tabular">
+              {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} из {total}
+            </span>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage(p => Math.max(0, p - 1))}
+                disabled={page === 0}
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
+                disabled={page >= totalPages - 1}
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
             </div>
-          )}
-        </CardContent>
-      </Card>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

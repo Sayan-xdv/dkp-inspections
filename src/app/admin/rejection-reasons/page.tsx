@@ -4,10 +4,9 @@ import { useEffect, useState, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import type { RejectionReason } from '@/lib/types/database';
 import { toast } from 'sonner';
-import { Plus, ListOrdered, Loader2 } from 'lucide-react';
+import { Plus, Loader2, AlertCircle } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -18,7 +17,9 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog';
 import { Switch } from '@/components/ui/switch';
-import { Skeleton } from '@/components/ui/skeleton';
+import { PageHeader } from '@/components/layout/page-header';
+import { EmptyState } from '@/components/shared/empty-state';
+import { SkeletonTableRows } from '@/components/shared/skeleton-table';
 
 export default function RejectionReasonsPage() {
   const supabase = createClient();
@@ -112,17 +113,17 @@ export default function RejectionReasonsPage() {
   };
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Причины отказа</h1>
-          <p className="text-muted-foreground">Управление причинами отклонения экспертиз</p>
-        </div>
-        <Button onClick={() => { setNewLabel(''); setDialogOpen(true); }}>
-          <Plus className="h-4 w-4 mr-2" />
-          Добавить причину
-        </Button>
-      </div>
+    <>
+      <PageHeader
+        title="Причины отказа"
+        subtitle="Справочник для подрядчиков и офиса заселения"
+        actions={
+          <Button onClick={() => { setNewLabel(''); setDialogOpen(true); }}>
+            <Plus className="h-4 w-4 mr-2" />
+            Добавить причину
+          </Button>
+        }
+      />
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>
             <DialogHeader>
@@ -151,37 +152,36 @@ export default function RejectionReasonsPage() {
         </DialogContent>
       </Dialog>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <ListOrdered className="h-5 w-5" />
-            Список причин отказа
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="space-y-3">
-              {Array.from({ length: 4 }).map((_, i) => (
-                <Skeleton key={i} className="h-12 w-full" />
-              ))}
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-[80px]">Порядок</TableHead>
-                  <TableHead>Название</TableHead>
-                  <TableHead>Статус</TableHead>
-                  <TableHead className="w-[100px]">Активна</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {reasons.map((reason) => (
+      <div
+        className="rounded-2xl bg-white border border-gray-200/80 shadow-[0_1px_2px_rgba(0,0,0,0.04)] overflow-hidden stagger-in"
+        style={{ animationDelay: '80ms' }}
+      >
+        {!loading && reasons.length === 0 ? (
+          <EmptyState
+            icon={AlertCircle}
+            title="Причины отказа не найдены"
+            description="Добавьте первую причину через кнопку «Добавить причину»"
+          />
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-[80px] text-[10px] uppercase tracking-wider text-gray-400 font-medium">Порядок</TableHead>
+                <TableHead className="text-[10px] uppercase tracking-wider text-gray-400 font-medium">Название</TableHead>
+                <TableHead className="text-[10px] uppercase tracking-wider text-gray-400 font-medium">Статус</TableHead>
+                <TableHead className="w-[100px] text-[10px] uppercase tracking-wider text-gray-400 font-medium">Активна</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {loading ? (
+                <SkeletonTableRows rows={5} cols={4} />
+              ) : (
+                reasons.map((reason) => (
                   <TableRow key={reason.id}>
                     <TableCell>
                       <Input
                         type="number"
-                        className="w-[70px]"
+                        className="w-[70px] font-mono-tabular"
                         value={reason.sort_order}
                         onChange={(e) => {
                           const val = parseInt(e.target.value, 10);
@@ -206,19 +206,12 @@ export default function RejectionReasonsPage() {
                       />
                     </TableCell>
                   </TableRow>
-                ))}
-                {reasons.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
-                      Причины отказа не найдены
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
-    </div>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        )}
+      </div>
+    </>
   );
 }

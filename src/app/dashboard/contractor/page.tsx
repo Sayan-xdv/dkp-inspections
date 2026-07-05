@@ -4,46 +4,47 @@ import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useProfile } from '@/hooks/use-profile';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/ui/select';
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
-} from '@/components/ui/dialog';
-import { Textarea } from '@/components/ui/textarea';
 import { StatusBadge } from '@/components/apartments/status-badge';
+import { PageHeader } from '@/components/layout/page-header';
+import { KpiCard } from '@/components/dashboard/kpi-card';
+import { EmptyState } from '@/components/shared/empty-state';
+import { SkeletonCards } from '@/components/shared/skeleton-table';
+import { RejectDialog } from '@/components/apartments/reject-dialog';
+import { CrmSearch, filterByCrmCode } from '@/components/apartments/crm-search';
+import { getWaitingDays, getWaitingColor } from '@/lib/workflow/waiting';
+import { sanitizeStorageKey } from '@/lib/utils';
 import { Upload, AlertTriangle, CheckCircle2, HardHat, Clock, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-import type { Apartment, RejectionReason } from '@/lib/types/database';
+import type { Apartment } from '@/lib/types/database';
 
 export default function ContractorPage() {
   const { profile, loading: profileLoading } = useProfile();
   const [apartments, setApartments] = useState<Apartment[]>([]);
   const [loading, setLoading] = useState(true);
-  const [reasons, setReasons] = useState<RejectionReason[]>([]);
   const [tab, setTab] = useState<'assigned' | 'in_progress'>('assigned');
   const [completedToday, setCompletedToday] = useState(0);
 
-  // Rejection dialog
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
   const [rejectingAptId, setRejectingAptId] = useState('');
-  const [selectedReason, setSelectedReason] = useState('');
-  const [rejectionNote, setRejectionNote] = useState('');
   const [uploading, setUploading] = useState<string | null>(null);
+  const [takingId, setTakingId] = useState<string | null>(null);
   const [crmSearch, setCrmSearch] = useState('');
 
   const supabase = createClient();
+  const contractorId = profile?.contractor_id;
 
   const loadData = useCallback(async () => {
-    if (!profile?.contractor_id) return;
+    if (!contractorId) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
 
     const { data } = await supabase
       .from('apartments')
       .select('*')
-      .eq('contractor_id', profile.contractor_id)
+      .eq('contractor_id', contractorId)
       .in('status', ['assigned', 'in_progress'])
       .order('deadline', { ascending: true, nullsFirst: false });
 
@@ -54,31 +55,16 @@ export default function ContractorPage() {
     const { count } = await supabase
       .from('apartments')
       .select('*', { count: 'exact', head: true })
-      .eq('contractor_id', profile.contractor_id)
+      .eq('contractor_id', contractorId)
       .eq('status', 'completed')
       .gte('completed_at', today);
     setCompletedToday(count ?? 0);
 
     setLoading(false);
-  }, [profile?.contractor_id]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contractorId]);
 
   useEffect(() => { loadData(); }, [loadData]);
-
-  useEffect(() => {
-    supabase.from('rejection_reasons').select('*').eq('is_active', true).order('sort_order')
-      .then(({ data }) => setReasons(data ?? []));
-  }, []);
-
-  function getWaitingDays(receiptDate: string | null): number {
-    if (!receiptDate) return 0;
-    return Math.floor((Date.now() - new Date(receiptDate).getTime()) / (1000 * 60 * 60 * 24));
-  }
-
-  function getWaitingColor(receiptDate: string | null): string {
-    const days = getWaitingDays(receiptDate);
-    if (days > 10) return 'text-red-600 font-bold';
-    return 'text-gray-600';
-  }
 
   async function handleFileUpload(aptId: string, crm_code: string) {
     const input = document.createElement('input');
@@ -94,7 +80,7 @@ export default function ContractorPage() {
 
       setUploading(aptId);
       const month = new Date().toISOString().slice(0, 7);
-      const path = `reports/${month}/${crm_code.replace(/[/\\]/g, '_')}.pdf`;
+      const path = `reports/${month}/${sanitizeStorageKey(crm_code)}.pdf`;
 
       const { error: uploadError } = await supabase.storage
         .from('inspection-reports')
@@ -127,14 +113,14 @@ export default function ContractorPage() {
     input.click();
   }
 
-  async function rejectApartment() {
-    if (!rejectingAptId || !selectedReason) return;
+  async function rejectApartment(reasonId: string, note: string) {
+    if (!rejectingAptId) return;
     const { error } = await supabase
       .from('apartments')
       .update({
         status: 'rejected',
-        rejection_reason_id: selectedReason,
-        rejection_note: rejectionNote || null,
+        rejection_reason_id: reasonId,
+        rejection_note: note || null,
       })
       .eq('id', rejectingAptId);
 
@@ -142,61 +128,68 @@ export default function ContractorPage() {
       toast.error('Ошибка: ' + error.message);
     } else {
       toast.success('Квартира возвращена');
-      setRejectDialogOpen(false);
-      setRejectionNote('');
-      setSelectedReason('');
       loadData();
     }
   }
 
   async function markInProgress(aptId: string) {
-    await supabase
+    setTakingId(aptId);
+    const { error } = await supabase
       .from('apartments')
       .update({ status: 'in_progress' })
       .eq('id', aptId)
       .eq('status', 'assigned');
+
+    if (error) {
+      toast.error('Ошибка: ' + error.message);
+    } else {
+      toast.success('Взято в работу');
+      loadData();
+    }
+    setTakingId(null);
   }
 
   if (profileLoading) {
-    return <div className="flex justify-center items-center h-64">
-      <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
-    </div>;
+    return (
+      <div>
+        <PageHeader title="Мои задания" subtitle="Экспертизы вашей компании" />
+        <SkeletonCards count={6} />
+      </div>
+    );
   }
 
-  const filteredApts = apartments.filter(a => a.status === tab).filter(a =>
-    !crmSearch.trim() || a.crm_code?.toLowerCase().includes(crmSearch.trim().toLowerCase())
-  );
+  if (!profile?.contractor_id) {
+    return (
+      <div>
+        <PageHeader title="Мои задания" subtitle="Экспертизы вашей компании" />
+        <div className="rounded-2xl bg-white border border-gray-200/80 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+          <EmptyState
+            icon={AlertTriangle}
+            title="Профиль не привязан к подрядчику"
+            description="Обратитесь к администратору"
+          />
+        </div>
+      </div>
+    );
+  }
+
+  const filteredApts = filterByCrmCode(apartments.filter(a => a.status === tab), crmSearch);
   const assignedCount = apartments.filter(a => a.status === 'assigned').length;
   const inProgressCount = apartments.filter(a => a.status === 'in_progress').length;
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">Мои задания</h1>
+      <PageHeader title="Мои задания" subtitle="Экспертизы вашей компании" />
 
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-3 mb-6">
-        <Card>
-          <CardContent className="pt-3 pb-3 text-center">
-            <p className="text-xs text-gray-500">Новые</p>
-            <p className="text-2xl font-bold text-indigo-600">{assignedCount}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-3 pb-3 text-center">
-            <p className="text-xs text-gray-500">В работе</p>
-            <p className="text-2xl font-bold text-purple-600">{inProgressCount}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-3 pb-3 text-center">
-            <p className="text-xs text-gray-500">Готово сегодня</p>
-            <p className="text-2xl font-bold text-green-600">{completedToday}</p>
-          </CardContent>
-        </Card>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+        <KpiCard label="Новые" value={assignedCount} icon={HardHat} accent="indigo" staggerDelay={0} />
+        <KpiCard label="В работе" value={inProgressCount} icon={Clock} accent="purple" staggerDelay={70} />
+        <KpiCard label="Готово сегодня" value={completedToday} icon={CheckCircle2} accent="emerald" staggerDelay={140} />
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-2 mb-6">
+      <div className="flex gap-2 mb-6 stagger-in" style={{ animationDelay: '210ms' }}>
         <Button variant={tab === 'assigned' ? 'default' : 'outline'} size="sm" onClick={() => setTab('assigned')}>
           <HardHat size={16} className="mr-1" /> Новые ({assignedCount})
         </Button>
@@ -207,32 +200,23 @@ export default function ContractorPage() {
 
       {/* CRM search */}
       <div className="mb-4">
-        <Input
-          placeholder="Поиск по коду CRM"
-          value={crmSearch}
-          onChange={e => setCrmSearch(e.target.value)}
-          className="max-w-xs"
-        />
+        <CrmSearch value={crmSearch} onChange={setCrmSearch} />
       </div>
 
       {/* Cards */}
       {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <Card key={i}><CardContent className="pt-4 h-48 animate-pulse bg-gray-50" /></Card>
-          ))}
-        </div>
+        <SkeletonCards count={6} />
       ) : filteredApts.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center text-gray-500">
-            <CheckCircle2 className="mx-auto h-10 w-10 text-gray-300 mb-3" />
-            <p>Нет квартир в этой категории</p>
-          </CardContent>
-        </Card>
+        <div className="rounded-2xl bg-white border border-gray-200/80 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+          <EmptyState icon={CheckCircle2} title="Нет квартир в этой категории" />
+        </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 stagger-in" style={{ animationDelay: '280ms' }}>
           {filteredApts.map((apt) => (
-            <Card key={apt.id} className="hover:shadow-md transition-shadow">
+            <Card
+              key={apt.id}
+              className="rounded-2xl border-gray-200/80 shadow-[0_1px_2px_rgba(0,0,0,0.04)] hover:shadow-[0_8px_24px_rgba(0,0,0,0.06)] hover:-translate-y-0.5 transition-all duration-200"
+            >
               <CardHeader className="pb-2">
                 <div className="flex justify-between items-start">
                   <CardTitle className="text-base">{apt.project_name}</CardTitle>
@@ -241,48 +225,70 @@ export default function ContractorPage() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-2 text-sm text-gray-600 mb-4">
-                  <p className="text-xs text-gray-400">Код CRM: {apt.crm_code}</p>
+                  <p className="text-xs text-gray-400">
+                    Код CRM: <span className="font-mono-tabular">{apt.crm_code}</span>
+                  </p>
                   <p>{apt.address}</p>
                   <div className="flex gap-4">
-                    <span>Дом: <strong>{apt.building_number}</strong></span>
-                    <span>Кв: <strong>{apt.apartment_number}</strong></span>
-                    <span>{apt.area_sqm} м²</span>
+                    <span>Дом: <strong className="font-mono-tabular">{apt.building_number}</strong></span>
+                    <span>Кв: <strong className="font-mono-tabular">{apt.apartment_number}</strong></span>
+                    <span className="font-mono-tabular">{apt.area_sqm} м²</span>
                   </div>
                   <p>Отделка: {apt.finish_type}</p>
-                  <p className={getWaitingColor(apt.receipt_date)}>
-                    Ожидание: {getWaitingDays(apt.receipt_date)} дн.
-                    {getWaitingDays(apt.receipt_date) > 10 && ' ⚠'}
-                  </p>
+                  {getWaitingDays(apt.receipt_date) > 10 ? (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-red-50 border border-red-200 px-2 py-0.5 text-[11px] font-medium text-red-600">
+                      ⚠ <span className="font-mono-tabular">{getWaitingDays(apt.receipt_date)}</span> дн.
+                    </span>
+                  ) : (
+                    <p className={getWaitingColor(apt.receipt_date)}>
+                      Ожидание: <span className="font-mono-tabular">{getWaitingDays(apt.receipt_date)}</span> дн.
+                    </p>
+                  )}
                 </div>
 
-                <div className="flex gap-2">
-                  <Button
-                    size="sm"
-                    className="flex-1 bg-green-600 hover:bg-green-700"
-                    disabled={uploading === apt.id}
-                    onClick={() => {
-                      markInProgress(apt.id);
-                      handleFileUpload(apt.id, apt.crm_code);
-                    }}
-                  >
-                    {uploading === apt.id ? (
-                      <Loader2 size={14} className="mr-1 animate-spin" />
-                    ) : (
-                      <Upload size={14} className="mr-1" />
-                    )}
-                    Загрузить PDF
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="text-orange-600 border-orange-300"
-                    onClick={() => {
-                      setRejectingAptId(apt.id);
-                      setRejectDialogOpen(true);
-                    }}
-                  >
-                    <AlertTriangle size={14} />
-                  </Button>
+                <div className="flex flex-col gap-2">
+                  {apt.status === 'assigned' && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="w-full text-indigo-600 border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700"
+                      disabled={takingId === apt.id}
+                      onClick={() => markInProgress(apt.id)}
+                    >
+                      {takingId === apt.id ? (
+                        <Loader2 size={14} className="mr-1 animate-spin" />
+                      ) : (
+                        <HardHat size={14} className="mr-1" />
+                      )}
+                      Взять в работу
+                    </Button>
+                  )}
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      className="flex-1 bg-green-600 hover:bg-green-700"
+                      disabled={uploading === apt.id}
+                      onClick={() => handleFileUpload(apt.id, apt.crm_code)}
+                    >
+                      {uploading === apt.id ? (
+                        <Loader2 size={14} className="mr-1 animate-spin" />
+                      ) : (
+                        <Upload size={14} className="mr-1" />
+                      )}
+                      Загрузить PDF
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-orange-600 border-orange-300"
+                      onClick={() => {
+                        setRejectingAptId(apt.id);
+                        setRejectDialogOpen(true);
+                      }}
+                    >
+                      <AlertTriangle size={14} />
+                    </Button>
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -291,32 +297,13 @@ export default function ContractorPage() {
       )}
 
       {/* Rejection dialog */}
-      <Dialog open={rejectDialogOpen} onOpenChange={setRejectDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Не могу попасть в квартиру</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <Select value={selectedReason} onValueChange={(v) => setSelectedReason(v ?? '')}>
-              <SelectTrigger><SelectValue placeholder="Выберите причину" /></SelectTrigger>
-              <SelectContent>
-                {reasons.map(r => (
-                  <SelectItem key={r.id} value={r.id}>{r.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Textarea
-              placeholder="Комментарий (необязательно)"
-              value={rejectionNote}
-              onChange={e => setRejectionNote(e.target.value)}
-            />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setRejectDialogOpen(false)}>Отмена</Button>
-            <Button onClick={rejectApartment} disabled={!selectedReason}>Отправить</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <RejectDialog
+        open={rejectDialogOpen}
+        onOpenChange={setRejectDialogOpen}
+        title="Не могу попасть в квартиру"
+        submitLabel="Отправить"
+        onConfirm={rejectApartment}
+      />
     </div>
   );
 }

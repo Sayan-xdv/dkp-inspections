@@ -130,6 +130,18 @@ export default async function OverviewPage() {
   const overdueApts = apartments.filter((a) => isOverdueByContractor(a));
   const overdueCount = overdueApts.length;
 
+  // Сколько квартир было просрочено неделю назад (по assigned_at/completed_at)
+  const weekAgoTs = now - 7 * MS_IN_DAY;
+  const overdueSevenDaysAgo = apartments.filter((a) => {
+    if (!a.assigned_at) return false;
+    const assignedTs = new Date(a.assigned_at).getTime();
+    if (assignedTs > weekAgoTs) return false;                      // ещё не была назначена
+    if ((weekAgoTs - assignedTs) / MS_IN_DAY <= 7) return false;   // SLA ещё не истёк на тот момент
+    if (a.completed_at && new Date(a.completed_at).getTime() <= weekAgoTs) return false; // уже была закрыта
+    return true;
+  }).length;
+  const overdueDelta = overdueCount - overdueSevenDaysAgo;
+
   // ===== Sparklines (8 недель) =====
   const weekBuckets: { start: Date; intake: number; completed: number; overdueCount: number; cycle: number; cycleN: number; inWork: number }[] = [];
   const todayStart = startOfWeek(new Date());
@@ -172,8 +184,9 @@ export default async function OverviewPage() {
   const sparklineCompleted = weekBuckets.map((w) => w.completed);
   const sparklineCycle = weekBuckets.map((w) => (w.cycleN > 0 ? +(w.cycle / w.cycleN).toFixed(1) : 0));
   const sparklineInWork = weekBuckets.map((w) => w.inWork);
-  // overdue sparkline — упрощение: монотонно с лёгким ростом
-  const overdueBase = Math.max(2, overdueCount - 6);
+  // overdue sparkline — приближение для MVP: понедельная история просрочек
+  // не хранится, тренд интерполируется между прошлым и текущим значением
+  const overdueBase = Math.max(0, Math.min(overdueSevenDaysAgo, overdueCount));
   const sparklineOverdue = weekBuckets.map((_, i) => overdueBase + Math.round((overdueCount - overdueBase) * (i / (WEEKS - 1))));
 
   const intakeData = weekBuckets.map((w, i) => ({
@@ -285,7 +298,7 @@ export default async function OverviewPage() {
         inWork: { value: inWork, delta: intakeLast7 - intakePrev7, sparkline: sparklineInWork },
         done: { value: completedLast7, delta: completedLast7 - completedPrev7, sparkline: sparklineCompleted },
         cycle: { value: +avgCycle.toFixed(1), delta: cycleDelta, sparkline: sparklineCycle },
-        overdue: { value: overdueCount, delta: -2, sparkline: sparklineOverdue },
+        overdue: { value: overdueCount, delta: overdueDelta, sparkline: sparklineOverdue },
       }}
       statusCounts={statusCounts}
       total={total}
