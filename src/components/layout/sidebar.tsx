@@ -15,6 +15,7 @@ import {
   AlertCircle,
   BarChart3,
   LayoutDashboard,
+  FileUp,
   LogOut,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -48,6 +49,7 @@ const NAV_ITEMS: Record<AppRole, NavItem[]> = {
     { href: '/dashboard/sales/registry', label: 'Реестр', icon: <ClipboardList size={18} /> },
     { href: '/dashboard/settlement', label: 'Очередь ключей', icon: <Key size={18} /> },
     { href: '/dashboard/contractors-overview', label: 'Подрядчики', icon: <HardHat size={18} /> },
+    { href: '/dashboard/contractor', label: 'Загрузка экспертиз', icon: <FileUp size={18} /> },
     { href: '/dashboard/crm-loader', label: 'Загрузчик CRM', icon: <Download size={18} /> },
     { href: '/admin/users', label: 'Пользователи', icon: <Users size={18} /> },
     { href: '/admin/projects', label: 'Проекты', icon: <Building2 size={18} /> },

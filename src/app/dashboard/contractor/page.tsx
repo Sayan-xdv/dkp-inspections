@@ -17,7 +17,7 @@ import { sanitizeStorageKey } from '@/lib/utils';
 import { allowedSourceStatuses } from '@/lib/workflow/state-machine';
 import { Upload, AlertTriangle, CheckCircle2, HardHat, Clock, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-import type { Apartment } from '@/lib/types/database';
+import type { Apartment, Contractor } from '@/lib/types/database';
 
 export default function ContractorPage() {
   const { profile, loading: profileLoading } = useProfile();
@@ -32,11 +32,15 @@ export default function ContractorPage() {
   const [takingId, setTakingId] = useState<string | null>(null);
   const [crmSearch, setCrmSearch] = useState('');
 
+  const [contractors, setContractors] = useState<Contractor[]>([]);
+
   const supabase = createClient();
   const contractorId = profile?.contractor_id;
+  // Админ видит все задания всех подрядчиков (режим контроля/демо)
+  const isAdmin = profile?.role === 'admin';
 
   const loadData = useCallback(async () => {
-    if (!contractorId) {
+    if (!contractorId && !isAdmin) {
       setLoading(false);
       return;
     }
@@ -44,28 +48,35 @@ export default function ContractorPage() {
 
     // Параллельно: список заданий + счётчик «готово сегодня»
     const today = new Date().toISOString().split('T')[0];
-    const [{ data }, { count }] = await Promise.all([
-      supabase
-        .from('apartments')
-        .select('*')
-        .eq('contractor_id', contractorId)
-        .in('status', ['assigned', 'in_progress'])
-        .order('deadline', { ascending: true, nullsFirst: false }),
-      supabase
-        .from('apartments')
-        .select('*', { count: 'exact', head: true })
-        .eq('contractor_id', contractorId)
-        .eq('status', 'completed')
-        .gte('completed_at', today),
-    ]);
+    let listQuery = supabase
+      .from('apartments')
+      .select('*')
+      .in('status', ['assigned', 'in_progress'])
+      .order('deadline', { ascending: true, nullsFirst: false });
+    let countQuery = supabase
+      .from('apartments')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'completed')
+      .gte('completed_at', today);
+    if (!isAdmin) {
+      listQuery = listQuery.eq('contractor_id', contractorId!);
+      countQuery = countQuery.eq('contractor_id', contractorId!);
+    }
+    const [{ data }, { count }] = await Promise.all([listQuery, countQuery]);
 
     setApartments(data ?? []);
     setCompletedToday(count ?? 0);
     setLoading(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [contractorId]);
+  }, [contractorId, isAdmin]);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    supabase.from('contractors').select('*').then(({ data }) => setContractors(data ?? []));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAdmin]);
 
   async function handleFileUpload(aptId: string, crm_code: string) {
     const input = document.createElement('input');
@@ -161,7 +172,7 @@ export default function ContractorPage() {
     );
   }
 
-  if (!profile?.contractor_id) {
+  if (!profile?.contractor_id && !isAdmin) {
     return (
       <div>
         <PageHeader title="Мои задания" subtitle="Экспертизы вашей компании" />
@@ -182,7 +193,10 @@ export default function ContractorPage() {
 
   return (
     <div>
-      <PageHeader title="Мои задания" subtitle="Экспертизы вашей компании" />
+      <PageHeader
+        title={isAdmin ? 'Загрузка экспертиз' : 'Мои задания'}
+        subtitle={isAdmin ? 'Все задания подрядчиков — режим администратора' : 'Экспертизы вашей компании'}
+      />
 
       {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
@@ -225,6 +239,11 @@ export default function ContractorPage() {
                   <CardTitle className="text-base">{apt.project_name}</CardTitle>
                   <StatusBadge status={apt.status} />
                 </div>
+                {isAdmin && (
+                  <span className="mt-1 inline-flex w-fit items-center rounded-md bg-indigo-50 border border-indigo-200/60 px-2 py-0.5 text-[11px] font-medium text-indigo-700">
+                    {contractors.find(c => c.id === apt.contractor_id)?.name ?? '—'}
+                  </span>
+                )}
               </CardHeader>
               <CardContent>
                 <div className="space-y-2 text-sm text-gray-600 mb-4">
